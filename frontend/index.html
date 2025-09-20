@@ -1,0 +1,1014 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Peregrine AI Tutor Platform</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+            width: 100%;
+            max-width: 1200px;
+            height: 80vh;
+            display: flex;
+        }
+
+        .sidebar {
+            width: 320px;
+            background: #f8f9ff;
+            padding: 20px;
+            border-right: 1px solid #e0e0e0;
+            overflow-y: auto;
+        }
+
+        .sidebar-section {
+            background: white;
+            padding: 15px;
+            border-radius: 15px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+
+        .sidebar-section h4 {
+            margin-bottom: 15px;
+            color: #333;
+            font-size: 14px;
+        }
+
+        .avatar {
+            width: 60px;
+            height: 60px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 24px;
+            font-weight: bold;
+            margin: 0 auto 15px;
+        }
+
+        .tutor-options {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+
+        .tutor-option {
+            padding: 8px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            cursor: pointer;
+            text-align: center;
+            transition: all 0.3s;
+            font-size: 12px;
+        }
+
+        .tutor-option:hover {
+            border-color: #667eea;
+            background: #f8f9ff;
+        }
+
+        .tutor-option.active {
+            border-color: #667eea;
+            background: #667eea;
+            color: white;
+        }
+
+        .voice-controls {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .voice-button {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            padding: 12px;
+            border-radius: 50%;
+            width: 45px;
+            height: 45px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .voice-button:hover {
+            transform: scale(1.1);
+        }
+
+        .voice-button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .voice-button.recording {
+            background: #ff6b6b;
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
+
+        .voice-status {
+            font-size: 12px;
+            color: #666;
+        }
+
+        .book-input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            margin-bottom: 10px;
+            font-size: 14px;
+        }
+
+        .generate-button {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 14px;
+            width: 100%;
+        }
+
+        .generate-button:hover {
+            background: #218838;
+        }
+
+        .generate-button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .stat {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+
+        .topic-tag {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 10px;
+            margin: 2px;
+        }
+
+        .main-chat {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .chat-header {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .chat-messages {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            background: #fafbff;
+        }
+
+        .message {
+            margin-bottom: 15px;
+            display: flex;
+            gap: 10px;
+        }
+
+        .message.student {
+            justify-content: flex-end;
+        }
+
+        .message-bubble {
+            max-width: 70%;
+            padding: 12px 18px;
+            border-radius: 18px;
+            line-height: 1.4;
+        }
+
+        .message.student .message-bubble {
+            background: #667eea;
+            color: white;
+        }
+
+        .message.ai .message-bubble {
+            background: white;
+            border: 1px solid #e0e0e0;
+            color: #333;
+        }
+
+        .timestamp {
+            font-size: 12px;
+            color: #999;
+            margin-top: 5px;
+        }
+
+        .typing-indicator {
+            display: none;
+            margin-bottom: 15px;
+        }
+
+        .typing-bubble {
+            background: white;
+            border: 1px solid #e0e0e0;
+            padding: 12px 18px;
+            border-radius: 18px;
+            max-width: 70%;
+        }
+
+        .typing-dots {
+            display: flex;
+            gap: 4px;
+        }
+
+        .typing-dots span {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #999;
+            animation: typing 1.4s infinite ease-in-out;
+        }
+
+        .typing-dots span:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .typing-dots span:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes typing {
+            0%, 60%, 100% {
+                transform: scale(1);
+                opacity: 0.5;
+            }
+            30% {
+                transform: scale(1.2);
+                opacity: 1;
+            }
+        }
+
+        .book-display {
+            margin: 20px 0;
+            padding: 20px;
+            background: #f8f9ff;
+            border-radius: 15px;
+            border-left: 4px solid #667eea;
+            display: none;
+        }
+
+        .book-title {
+            font-size: 18px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .book-meta {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 15px;
+        }
+
+        .book-content {
+            line-height: 1.6;
+            color: #444;
+            margin-bottom: 15px;
+        }
+
+        .read-aloud-btn {
+            background: #17a2b8;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .read-aloud-btn:hover {
+            background: #138496;
+        }
+
+        .chat-input-container {
+            padding: 20px;
+            background: white;
+            border-top: 1px solid #e0e0e0;
+        }
+
+        .chat-input-form {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .chat-input {
+            flex: 1;
+            padding: 12px 18px;
+            border: 2px solid #e0e0e0;
+            border-radius: 25px;
+            outline: none;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+
+        .chat-input:focus {
+            border-color: #667eea;
+        }
+
+        .send-button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background 0.3s;
+        }
+
+        .send-button:hover {
+            background: #5a6fd8;
+        }
+
+        .send-button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .setup-form {
+            background: white;
+            padding: 30px;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            width: 90%;
+            max-width: 500px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 16px;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+
+        .form-group input:focus, .form-group select:focus {
+            border-color: #667eea;
+        }
+
+        .interests-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .interest-tag {
+            background: #f0f0f0;
+            padding: 5px 15px;
+            border-radius: 20px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .interest-tag.selected {
+            background: #667eea;
+            color: white;
+        }
+
+        .primary-button {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+            transition: transform 0.3s;
+        }
+
+        .primary-button:hover {
+            transform: translateY(-2px);
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                flex-direction: column;
+                height: 90vh;
+            }
+
+            .sidebar {
+                width: 100%;
+                height: auto;
+                max-height: 200px;
+            }
+
+            .tutor-options {
+                grid-template-columns: 1fr 1fr 1fr 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <!-- Student Setup Form -->
+        <div id="setupForm" class="setup-form">
+            <h2 style="text-align: center; margin-bottom: 30px; color: #333;">Welcome to Peregrine AI Tutor!</h2>
+            <form id="studentForm">
+                <div class="form-group">
+                    <label for="studentName">Student Name</label>
+                    <input type="text" id="studentName" required>
+                </div>
+                <div class="form-group">
+                    <label for="gradeLevel">Grade Level</label>
+                    <select id="gradeLevel" required>
+                        <option value="">Select Grade</option>
+                        <option value="1">1st Grade</option>
+                        <option value="2">2nd Grade</option>
+                        <option value="3">3rd Grade</option>
+                        <option value="4">4th Grade</option>
+                        <option value="5">5th Grade</option>
+                        <option value="6">6th Grade</option>
+                        <option value="7">7th Grade</option>
+                        <option value="8">8th Grade</option>
+                        <option value="9">9th Grade</option>
+                        <option value="10">10th Grade</option>
+                        <option value="11">11th Grade</option>
+                        <option value="12">12th Grade</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Interests (select all that apply)</label>
+                    <div class="interests-container">
+                        <div class="interest-tag" data-interest="dinosaurs">Dinosaurs</div>
+                        <div class="interest-tag" data-interest="space">Space</div>
+                        <div class="interest-tag" data-interest="animals">Animals</div>
+                        <div class="interest-tag" data-interest="sports">Sports</div>
+                        <div class="interest-tag" data-interest="music">Music</div>
+                        <div class="interest-tag" data-interest="art">Art</div>
+                        <div class="interest-tag" data-interest="science">Science</div>
+                        <div class="interest-tag" data-interest="history">History</div>
+                        <div class="interest-tag" data-interest="technology">Technology</div>
+                        <div class="interest-tag" data-interest="reading">Reading</div>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="learningStyle">Learning Style</label>
+                    <select id="learningStyle" required>
+                        <option value="">Select Learning Style</option>
+                        <option value="visual">Visual Learner</option>
+                        <option value="auditory">Auditory Learner</option>
+                        <option value="kinesthetic">Hands-on Learner</option>
+                        <option value="reading">Reading/Writing Learner</option>
+                    </select>
+                </div>
+                <button type="submit" class="primary-button">Start Learning!</button>
+            </form>
+        </div>
+
+        <!-- Main Chat Interface -->
+        <div id="mainInterface" class="container" style="display: none;">
+            <div class="sidebar">
+                <!-- Student Profile -->
+                <div class="sidebar-section">
+                    <div class="avatar" id="studentAvatar">A</div>
+                    <h3 id="studentNameDisplay" style="text-align: center; margin-bottom: 10px;">Student</h3>
+                    <p id="studentGradeDisplay" style="text-align: center; color: #666; margin-bottom: 5px;">Grade 5</p>
+                    <p id="studentInterestsDisplay" style="text-align: center; color: #666; font-size: 12px;">Interested in dinosaurs, space</p>
+                </div>
+
+                <!-- Tutor Selector -->
+                <div class="sidebar-section">
+                    <h4>Choose Your Tutor</h4>
+                    <div class="tutor-options">
+                        <div class="tutor-option active" data-tutor="general">
+                            🤖 Buddy<br><small>General</small>
+                        </div>
+                        <div class="tutor-option" data-tutor="math">
+                            🔢 Numbers<br><small>Math</small>
+                        </div>
+                        <div class="tutor-option" data-tutor="science">
+                            🔬 Discovery<br><small>Science</small>
+                        </div>
+                        <div class="tutor-option" data-tutor="reading">
+                            📚 Story<br><small>Reading</small>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Voice Controls -->
+                <div class="sidebar-section">
+                    <h4>Voice Chat</h4>
+                    <div class="voice-controls">
+                        <button class="voice-button" id="voiceButton" title="Click to speak">🎤</button>
+                        <span class="voice-status" id="voiceStatus">Click to speak!</span>
+                    </div>
+                </div>
+
+                <!-- Book Generator -->
+                <div class="sidebar-section">
+                    <h4>Generate Story</h4>
+                    <input type="text" id="bookTopic" class="book-input" placeholder="Story topic (e.g., space adventure)">
+                    <button class="generate-button" id="generateBookBtn">Generate Chapter</button>
+                </div>
+
+                <!-- Progress -->
+                <div class="sidebar-section">
+                    <h4>Progress</h4>
+                    <div class="stat">
+                        <span>Messages Today:</span>
+                        <strong id="messagesCount">0</strong>
+                    </div>
+                    <div class="stat">
+                        <span>Topics Learned:</span>
+                        <strong id="topicsCount">0</strong>
+                    </div>
+                    <div class="stat">
+                        <span>Learning Streak:</span>
+                        <strong>3 days</strong>
+                    </div>
+                    <div style="margin-top: 15px;">
+                        <h5 style="color: #666; margin-bottom: 10px; font-size: 12px;">Topics Covered:</h5>
+                        <div id="topicsDisplay" style="font-size: 12px; color: #888;">
+                            Start chatting to see topics!
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="main-chat">
+                <div class="chat-header">
+                    <h2>Your Personal AI Tutor</h2>
+                    <p>Ask me anything! I'm here to help you learn.</p>
+                </div>
+                
+                <div class="chat-messages" id="chatMessages">
+                    <div class="message ai">
+                        <div class="message-bubble">
+                            Hello <span id="welcomeName">there</span>! I'm your personal AI tutor, and I'm absolutely thrilled to learn with you today! 
+                            
+                            I know you're interested in <span id="welcomeInterests">amazing things</span>, and I love that! We can explore any topic you're curious about.
+                            
+                            You can choose different tutors from the sidebar, use voice chat, or even ask me to generate custom stories just for you! What would you like to discover together? 🌟
+                        </div>
+                    </div>
+                    
+                    <!-- Book display area -->
+                    <div class="book-display" id="bookDisplay">
+                        <div class="book-title" id="bookTitle">Chapter Title</div>
+                        <div class="book-meta" id="bookMeta">Reading time: 5 minutes | Words: 400</div>
+                        <div class="book-content" id="bookContent">Book content will appear here...</div>
+                        <button class="read-aloud-btn" id="readAloudBtn">🔊 Read Aloud</button>
+                    </div>
+
+                    <!-- Typing indicator -->
+                    <div class="typing-indicator" id="typingIndicator">
+                        <div class="typing-bubble">
+                            <div class="typing-dots">
+                                <span></span>
+                                <span></span>
+                                <span></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="chat-input-container">
+                    <form class="chat-input-form" id="chatForm">
+                        <input type="text" class="chat-input" id="messageInput" placeholder="Ask your tutor anything..." required>
+                        <button type="submit" class="send-button" id="sendButton">Send</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        const API_BASE = 'http://localhost:8000';
+        let currentStudent = null;
+        let messageCount = 0;
+        let selectedTutor = 'general';
+        let isRecording = false;
+        let recognition = null;
+        const speechSynthesis = window.speechSynthesis;
+
+        // Initialize app
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('App initialized');
+            setupEventListeners();
+            initializeSpeechRecognition();
+        });
+
+        function setupEventListeners() {
+            console.log('Setting up event listeners');
+            
+            // Student form
+            document.getElementById('studentForm').addEventListener('submit', handleStudentSetup);
+            
+            // Chat form
+            document.getElementById('chatForm').addEventListener('submit', handleChatMessage);
+            
+            // Interest tags
+            document.querySelectorAll('.interest-tag').forEach(tag => {
+                tag.addEventListener('click', toggleInterest);
+            });
+
+            // Tutor selection
+            document.querySelectorAll('.tutor-option').forEach(option => {
+                option.addEventListener('click', selectTutor);
+            });
+
+            // Voice button
+            document.getElementById('voiceButton').addEventListener('click', toggleVoiceRecording);
+            
+            // Book generation
+            document.getElementById('generateBookBtn').addEventListener('click', generateBook);
+            
+            // Read aloud
+            document.getElementById('readAloudBtn').addEventListener('click', readBookAloud);
+        }
+
+        function initializeSpeechRecognition() {
+            if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+                const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+                recognition = new SpeechRecognition();
+                recognition.continuous = false;
+                recognition.interimResults = false;
+                recognition.lang = 'en-US';
+
+                recognition.onstart = function() {
+                    document.getElementById('voiceStatus').textContent = 'Listening...';
+                };
+
+                recognition.onresult = function(event) {
+                    const transcript = event.results[0][0].transcript;
+                    document.getElementById('messageInput').value = transcript;
+                    document.getElementById('voiceStatus').textContent = 'Click to speak!';
+                    
+                    // Auto-send message
+                    setTimeout(() => {
+                        document.getElementById('chatForm').dispatchEvent(new Event('submit'));
+                    }, 500);
+                };
+
+                recognition.onerror = function(event) {
+                    console.error('Speech recognition error:', event.error);
+                    document.getElementById('voiceStatus').textContent = 'Voice error - try again';
+                    isRecording = false;
+                    document.getElementById('voiceButton').classList.remove('recording');
+                };
+
+                recognition.onend = function() {
+                    isRecording = false;
+                    document.getElementById('voiceButton').classList.remove('recording');
+                };
+            } else {
+                document.getElementById('voiceStatus').textContent = 'Voice not supported';
+                document.getElementById('voiceButton').disabled = true;
+            }
+        }
+
+        function toggleInterest(e) {
+            e.target.classList.toggle('selected');
+        }
+
+        function selectTutor(e) {
+            document.querySelectorAll('.tutor-option').forEach(opt => opt.classList.remove('active'));
+            e.currentTarget.classList.add('active');
+            selectedTutor = e.currentTarget.dataset.tutor;
+            
+            const tutorNames = {
+                'general': 'Buddy',
+                'math': 'Professor Numbers', 
+                'science': 'Dr. Discovery',
+                'reading': 'Ms. Story'
+            };
+            
+            addMessageToChat(`Hi! I'm ${tutorNames[selectedTutor]}, your ${selectedTutor === 'general' ? 'learning companion' : selectedTutor + ' tutor'}. How can I help you learn today?`, 'ai');
+        }
+
+        function toggleVoiceRecording() {
+            if (!recognition) {
+                alert('Voice recognition is not supported in your browser.');
+                return;
+            }
+
+            if (isRecording) {
+                recognition.stop();
+            } else {
+                recognition.start();
+                isRecording = true;
+                document.getElementById('voiceButton').classList.add('recording');
+            }
+        }
+
+        async function generateBook() {
+            const topic = document.getElementById('bookTopic').value.trim();
+            if (!topic) {
+                alert('Please enter a story topic!');
+                return;
+            }
+
+            const generateBtn = document.getElementById('generateBookBtn');
+            generateBtn.disabled = true;
+            generateBtn.textContent = 'Generating...';
+
+            try {
+                const response = await fetch(`${API_BASE}/api/generate-chapter`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        student_id: currentStudent.id,
+                        topic: topic,
+                        chapter_number: 1
+                    })
+                });
+
+                if (response.ok) {
+                    const chapter = await response.json();
+                    displayBook(chapter);
+                    addMessageToChat(`I've generated a custom story about "${topic}" just for you! Check it out above.`, 'ai');
+                } else {
+                    alert('Error generating book. Please try again.');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Connection error. Please check if the server is running.');
+            } finally {
+                generateBtn.disabled = false;
+                generateBtn.textContent = 'Generate Chapter';
+                document.getElementById('bookTopic').value = '';
+            }
+        }
+
+        function displayBook(chapter) {
+            document.getElementById('bookTitle').textContent = chapter.title;
+            document.getElementById('bookMeta').textContent = `Reading time: ${chapter.reading_time_minutes} minutes | Words: ${chapter.word_count}`;
+            document.getElementById('bookContent').textContent = chapter.content;
+            document.getElementById('bookDisplay').style.display = 'block';
+            document.getElementById('bookDisplay').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function readBookAloud() {
+            const content = document.getElementById('bookContent').textContent;
+            if (speechSynthesis.speaking) {
+                speechSynthesis.cancel();
+                document.getElementById('readAloudBtn').textContent = '🔊 Read Aloud';
+                return;
+            }
+
+            const utterance = new SpeechSynthesisUtterance(content);
+            utterance.rate = 0.8;
+            utterance.pitch = 1.1;
+            
+            utterance.onstart = function() {
+                document.getElementById('readAloudBtn').textContent = '⏸️ Stop Reading';
+            };
+            
+            utterance.onend = function() {
+                document.getElementById('readAloudBtn').textContent = '🔊 Read Aloud';
+            };
+
+            speechSynthesis.speak(utterance);
+        }
+
+        async function handleStudentSetup(e) {
+            e.preventDefault();
+            
+            const name = document.getElementById('studentName').value;
+            const gradeLevel = parseInt(document.getElementById('gradeLevel').value);
+            const learningStyle = document.getElementById('learningStyle').value;
+            
+            const selectedInterests = Array.from(document.querySelectorAll('.interest-tag.selected'))
+                .map(tag => tag.dataset.interest);
+            
+            if (selectedInterests.length === 0) {
+                alert('Please select at least one interest!');
+                return;
+            }
+            
+            const student = {
+                id: generateId(),
+                name: name,
+                grade_level: gradeLevel,
+                interests: selectedInterests,
+                learning_style: learningStyle
+            };
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/students`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(student)
+                });
+                
+                if (response.ok) {
+                    currentStudent = student;
+                    showMainInterface();
+                } else {
+                    alert('Error creating student profile. Please try again.');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Connection error. Make sure the backend server is running on localhost:8000');
+            }
+        }
+
+        function showMainInterface() {
+            document.getElementById('setupForm').style.display = 'none';
+            document.getElementById('mainInterface').style.display = 'flex';
+            
+            document.getElementById('studentAvatar').textContent = currentStudent.name[0].toUpperCase();
+            document.getElementById('studentNameDisplay').textContent = currentStudent.name;
+            document.getElementById('studentGradeDisplay').textContent = `Grade ${currentStudent.grade_level}`;
+            document.getElementById('studentInterestsDisplay').textContent = `Interested in ${currentStudent.interests.join(', ')}`;
+            
+            document.getElementById('welcomeName').textContent = currentStudent.name;
+            document.getElementById('welcomeInterests').textContent = currentStudent.interests.join(', ');
+            
+            loadStudentProgress();
+        }
+
+        async function loadStudentProgress() {
+            try {
+                const response = await fetch(`${API_BASE}/api/students/${currentStudent.id}/progress`);
+                if (response.ok) {
+                    const progress = await response.json();
+                    document.getElementById('messagesCount').textContent = progress.total_messages || 0;
+                    document.getElementById('topicsCount').textContent = progress.topics_covered?.length || 0;
+                    
+                    if (progress.topics_covered && progress.topics_covered.length > 0) {
+                        const topicsHtml = progress.topics_covered.map(topic => 
+                            `<span class="topic-tag">${topic}</span>`
+                        ).join('');
+                        document.getElementById('topicsDisplay').innerHTML = topicsHtml;
+                    }
+                }
+            } catch (error) {
+                console.log('Could not load progress:', error);
+            }
+        }
+
+        async function handleChatMessage(e) {
+            e.preventDefault();
+            
+            const messageInput = document.getElementById('messageInput');
+            const message = messageInput.value.trim();
+            
+            if (!message) return;
+            
+            // Clear input and disable button
+            messageInput.value = '';
+            const sendButton = document.getElementById('sendButton');
+            sendButton.disabled = true;
+            sendButton.textContent = 'Sending...';
+            
+            // Add user message to chat
+            addMessageToChat(message, 'student');
+            
+            // Show typing indicator
+            showTypingIndicator();
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/chat`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        content: message,
+                        student_id: currentStudent.id,
+                        tutor_type: selectedTutor
+                    })
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    
+                    // Hide typing indicator
+                    hideTypingIndicator();
+                    
+                    // Add AI response
+                    setTimeout(() => {
+                        addMessageToChat(data.response, 'ai');
+                    }, 500);
+                    
+                    messageCount++;
+                    document.getElementById('messagesCount').textContent = messageCount;
+                    
+                    // Refresh progress
+                    setTimeout(loadStudentProgress, 1000);
+                    
+                } else {
+                    hideTypingIndicator();
+                    addMessageToChat('Sorry, I encountered an error. Please try again.', 'ai');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                hideTypingIndicator();
+                addMessageToChat('Connection error. Please check if the server is running and you have set up your OpenAI API key.', 'ai');
+            } finally {
+                // Re-enable button
+                sendButton.disabled = false;
+                sendButton.textContent = 'Send';
+                messageInput.focus();
+            }
+        }
+
+        function showTypingIndicator() {
+            const typingIndicator = document.getElementById('typingIndicator');
+            typingIndicator.style.display = 'block';
+            
+            const chatMessages = document.getElementById('chatMessages');
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function hideTypingIndicator() {
+            const typingIndicator = document.getElementById('typingIndicator');
+            typingIndicator.style.display = 'none';
+        }
+
+        function addMessageToChat(message, type) {
+            const chatMessages = document.getElementById('chatMessages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${type}`;
+            
+            const timestamp = new Date().toLocaleTimeString();
+            
+            messageDiv.innerHTML = `
+                <div class="message-bubble">
+                    ${message}
+                    <div class="timestamp">${timestamp}</div>
+                </div>
+            `;
+            
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function generateId() {
+            return 'student_' + Math.random().toString(36).substr(2, 9);
+        }
+    </script>
+</body>
+</html>
