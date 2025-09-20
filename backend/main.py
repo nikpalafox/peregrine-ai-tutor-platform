@@ -6,6 +6,10 @@ import json
 import uuid
 from datetime import datetime
 import asyncio
+from typing import List, Dict, Optional
+from datetime import datetime, timedelta
+from enum import Enum
+import json
 
 # You'll need to install: pip install fastapi uvicorn openai python-multipart
 import openai
@@ -44,6 +48,943 @@ class ChatResponse(BaseModel):
     response: str
     student_id: str
     timestamp: str
+
+# Gamification Models
+class BadgeType(str, Enum):
+    ACHIEVEMENT = "achievement"
+    MILESTONE = "milestone"
+    STREAK = "streak"
+    SUBJECT = "subject"
+    SPECIAL = "special"
+
+class DifficultyLevel(str, Enum):
+    BRONZE = "bronze"
+    SILVER = "silver" 
+    GOLD = "gold"
+    PLATINUM = "platinum"
+
+class Badge(BaseModel):
+    id: str
+    name: str
+    description: str
+    icon: str  # emoji or icon identifier
+    badge_type: BadgeType
+    difficulty: DifficultyLevel
+    requirements: Dict  # flexible requirements structure
+    xp_reward: int
+    rarity_score: int  # 1-100, higher = rarer
+
+class Achievement(BaseModel):
+    id: str
+    student_id: str
+    badge_id: str
+    earned_date: datetime
+    progress: float = 100.0  # percentage completion
+
+class StudentLevel(BaseModel):
+    student_id: str
+    current_level: int
+    current_xp: int
+    xp_to_next_level: int
+    total_xp_earned: int
+    title: str  # e.g., "Math Explorer", "Science Whiz"
+
+class Streak(BaseModel):
+    student_id: str
+    streak_type: str  # "daily_login", "daily_study", "subject_focus"
+    current_count: int
+    max_count: int
+    last_activity_date: datetime
+    is_active: bool
+
+class Quest(BaseModel):
+    id: str
+    name: str
+    description: str
+    requirements: Dict
+    xp_reward: int
+    badge_reward: Optional[str] = None
+    time_limit_hours: Optional[int] = None
+    difficulty: DifficultyLevel
+
+class StudentQuest(BaseModel):
+    quest_id: str
+    student_id: str
+    start_date: datetime
+    progress: Dict  # tracks progress toward requirements
+    completed: bool = False
+    completion_date: Optional[datetime] = None
+
+# Gamification Engine
+class GamificationEngine:
+
+    def __init__(self):
+        self.badges = self._initialize_badges()
+        self.quests = self._initialize_quests()
+        self.level_thresholds = self._initialize_level_system()
+        
+    def _initialize_badges(self) -> Dict[str, Badge]:
+        """Initialize all available badges"""
+        badges = {
+            # First Steps Badges
+            "first_chat": Badge(
+                id="first_chat",
+                name="First Steps",
+                description="Had your first conversation with an AI tutor",
+                icon="👋",
+                badge_type=BadgeType.MILESTONE,
+                difficulty=DifficultyLevel.BRONZE,
+                requirements={"messages_sent": 1},
+                xp_reward=50,
+                rarity_score=5
+            ),
+            
+            "curious_mind": Badge(
+                id="curious_mind",
+                name="Curious Mind",
+                description="Asked 10 different questions",
+                icon="🤔",
+                badge_type=BadgeType.ACHIEVEMENT,
+                difficulty=DifficultyLevel.BRONZE,
+                requirements={"unique_questions": 10},
+                xp_reward=100,
+                rarity_score=15
+            ),
+            
+            # Subject Mastery Badges
+            "math_rookie": Badge(
+                id="math_rookie",
+                name="Math Rookie",
+                description="Solved 20 math problems",
+                icon="🔢",
+                badge_type=BadgeType.SUBJECT,
+                difficulty=DifficultyLevel.BRONZE,
+                requirements={"math_interactions": 20},
+                xp_reward=150,
+                rarity_score=25
+            ),
+            
+            "math_explorer": Badge(
+                id="math_explorer",
+                name="Math Explorer",
+                description="Solved 100 math problems",
+                icon="🧮",
+                badge_type=BadgeType.SUBJECT,
+                difficulty=DifficultyLevel.SILVER,
+                requirements={"math_interactions": 100},
+                xp_reward=300,
+                rarity_score=45
+            ),
+            
+            "math_master": Badge(
+                id="math_master",
+                name="Math Master",
+                description="Solved 500 math problems",
+                icon="🏆",
+                badge_type=BadgeType.SUBJECT,
+                difficulty=DifficultyLevel.GOLD,
+                requirements={"math_interactions": 500},
+                xp_reward=750,
+                rarity_score=80
+            ),
+            
+            "science_enthusiast": Badge(
+                id="science_enthusiast",
+                name="Science Enthusiast",
+                description="Explored 50 science topics",
+                icon="🔬",
+                badge_type=BadgeType.SUBJECT,
+                difficulty=DifficultyLevel.SILVER,
+                requirements={"science_interactions": 50},
+                xp_reward=200,
+                rarity_score=35
+            ),
+            
+            "reading_champion": Badge(
+                id="reading_champion",
+                name="Reading Champion",
+                description="Read 25 AI-generated stories",
+                icon="📚",
+                badge_type=BadgeType.SUBJECT,
+                difficulty=DifficultyLevel.SILVER,
+                requirements={"books_read": 25},
+                xp_reward=250,
+                rarity_score=40
+            ),
+            
+            # Streak Badges
+            "daily_learner": Badge(
+                id="daily_learner",
+                name="Daily Learner",
+                description="Studied for 7 days in a row",
+                icon="🔥",
+                badge_type=BadgeType.STREAK,
+                difficulty=DifficultyLevel.BRONZE,
+                requirements={"daily_streak": 7},
+                xp_reward=200,
+                rarity_score=30
+            ),
+            
+            "study_warrior": Badge(
+                id="study_warrior",
+                name="Study Warrior",
+                description="Studied for 30 days in a row",
+                icon="⚔️",
+                badge_type=BadgeType.STREAK,
+                difficulty=DifficultyLevel.GOLD,
+                requirements={"daily_streak": 30},
+                xp_reward=1000,
+                rarity_score=90
+            ),
+            
+            # Special Achievement Badges
+            "night_owl": Badge(
+                id="night_owl",
+                name="Night Owl",
+                description="Studied after 9 PM",
+                icon="🦉",
+                badge_type=BadgeType.SPECIAL,
+                difficulty=DifficultyLevel.BRONZE,
+                requirements={"late_night_study": 1},
+                xp_reward=75,
+                rarity_score=20
+            ),
+            
+            "early_bird": Badge(
+                id="early_bird",
+                name="Early Bird",
+                description="Studied before 7 AM",
+                icon="🐦",
+                badge_type=BadgeType.SPECIAL,
+                difficulty=DifficultyLevel.BRONZE,
+                requirements={"early_morning_study": 1},
+                xp_reward=75,
+                rarity_score=20
+            ),
+            
+            "voice_explorer": Badge(
+                id="voice_explorer",
+                name="Voice Explorer",
+                description="Used voice chat 10 times",
+                icon="🎤",
+                badge_type=BadgeType.ACHIEVEMENT,
+                difficulty=DifficultyLevel.BRONZE,
+                requirements={"voice_interactions": 10},
+                xp_reward=125,
+                rarity_score=25
+            ),
+            
+            "story_creator": Badge(
+                id="story_creator",
+                name="Story Creator",
+                description="Generated 5 custom stories",
+                icon="✨",
+                badge_type=BadgeType.ACHIEVEMENT,
+                difficulty=DifficultyLevel.SILVER,
+                requirements={"stories_generated": 5},
+                xp_reward=200,
+                rarity_score=35
+            ),
+            
+            # Ultra Rare Badges
+            "tutor_whisperer": Badge(
+                id="tutor_whisperer",
+                name="Tutor Whisperer",
+                description="Chatted with all 4 specialized tutors in one day",
+                icon="🌟",
+                badge_type=BadgeType.SPECIAL,
+                difficulty=DifficultyLevel.PLATINUM,
+                requirements={"all_tutors_one_day": 1},
+                xp_reward=500,
+                rarity_score=95
+            ),
+            
+            "knowledge_seeker": Badge(
+                id="knowledge_seeker",
+                name="Knowledge Seeker",
+                description="Covered 20 different topics in one week",
+                icon="🎯",
+                badge_type=BadgeType.SPECIAL,
+                difficulty=DifficultyLevel.PLATINUM,
+                requirements={"diverse_topics_week": 20},
+                xp_reward=750,
+                rarity_score=98
+            )
+        }
+        return badges
+    
+    def _initialize_quests(self) -> Dict[str, Quest]:
+        """Initialize daily and weekly quests"""
+        quests = {
+            "daily_explorer": Quest(
+                id="daily_explorer",
+                name="Daily Explorer",
+                description="Ask 5 questions today",
+                requirements={"messages_today": 5},
+                xp_reward=100,
+                time_limit_hours=24,
+                difficulty=DifficultyLevel.BRONZE
+            ),
+            
+            "subject_hopper": Quest(
+                id="subject_hopper",
+                name="Subject Hopper",
+                description="Chat with 3 different tutors today",
+                requirements={"different_tutors_today": 3},
+                xp_reward=150,
+                badge_reward="tutor_whisperer",  # partial progress toward badge
+                time_limit_hours=24,
+                difficulty=DifficultyLevel.SILVER
+            ),
+            
+            "story_time": Quest(
+                id="story_time",
+                name="Story Time",
+                description="Generate and read a story today",
+                requirements={"story_generated_and_read_today": 1},
+                xp_reward=125,
+                time_limit_hours=24,
+                difficulty=DifficultyLevel.BRONZE
+            ),
+            
+            "math_marathon": Quest(
+                id="math_marathon",
+                name="Math Marathon",
+                description="Solve 10 math problems this week",
+                requirements={"math_problems_week": 10},
+                xp_reward=300,
+                badge_reward="math_rookie",  # progress toward badge
+                time_limit_hours=168,  # 7 days
+                difficulty=DifficultyLevel.SILVER
+            ),
+            
+            "voice_challenger": Quest(
+                id="voice_challenger",
+                name="Voice Challenger",
+                description="Use voice chat 3 times today",
+                requirements={"voice_interactions_today": 3},
+                xp_reward=175,
+                time_limit_hours=24,
+                difficulty=DifficultyLevel.SILVER
+            )
+        }
+        return quests
+    
+    def _initialize_level_system(self) -> Dict[int, Dict]:
+        """Initialize XP thresholds and titles for each level"""
+        levels = {}
+        base_xp = 100
+        multiplier = 1.5
+        
+        titles = [
+            "Curious Beginner", "Eager Learner", "Knowledge Seeker", "Smart Student", 
+            "Bright Mind", "Study Star", "Academic Ace", "Learning Legend",
+            "Wisdom Warrior", "Scholar Supreme", "Master Mind", "Genius Explorer",
+            "Brilliant Brain", "Learning Lord", "Knowledge King", "Study Sage",
+            "Academic Angel", "Wisdom Wizard", "Learning Luminary", "Ultimate Scholar"
+        ]
+        
+        for level in range(1, 21):  # Levels 1-20
+            xp_required = int(base_xp * (multiplier ** (level - 1)))
+            levels[level] = {
+                "xp_required": xp_required,
+                "title": titles[min(level - 1, len(titles) - 1)],
+                "perks": self._get_level_perks(level)
+            }
+        
+        return levels
+    
+    def _get_level_perks(self, level: int) -> List[str]:
+        """Get perks unlocked at each level"""
+        perks = []
+        if level >= 3:
+            perks.append("Voice chat unlocked")
+        if level >= 5:
+            perks.append("Custom story generation")
+        if level >= 8:
+            perks.append("Advanced progress tracking")
+        if level >= 10:
+            perks.append("Parent dashboard insights")
+        if level >= 15:
+            perks.append("Platinum quest access")
+        if level >= 20:
+            perks.append("Master scholar status")
+        
+        return perks
+    
+    async def check_and_award_badges(self, student_id: str, activity_data: Dict) -> List[Badge]:
+        """Check if student has earned any new badges and award them"""
+        awarded_badges = []
+        student_stats = await self.get_student_stats(student_id)
+        
+        for badge_id, badge in self.badges.items():
+            # Skip if student already has this badge
+            if await self.student_has_badge(student_id, badge_id):
+                continue
+                
+            # Check if requirements are met
+            if self._check_badge_requirements(badge, student_stats, activity_data):
+                await self.award_badge(student_id, badge_id)
+                awarded_badges.append(badge)
+                
+                # Award XP for earning the badge
+                await self.add_xp(student_id, badge.xp_reward, f"Earned badge: {badge.name}")
+        
+        return awarded_badges
+    
+    def _check_badge_requirements(self, badge: Badge, student_stats: Dict, activity_data: Dict) -> bool:
+        """Check if badge requirements are satisfied"""
+        requirements = badge.requirements
+        
+        # Check each requirement
+        for req_key, req_value in requirements.items():
+            current_value = student_stats.get(req_key, 0)
+            activity_value = activity_data.get(req_key, 0)
+            total_value = current_value + activity_value
+            
+            if total_value < req_value:
+                return False
+        
+        return True
+    
+    async def update_streaks(self, student_id: str) -> Dict[str, Streak]:
+        """Update student streaks based on current activity"""
+        today = datetime.now().date()
+        streaks = {}
+        
+        # Daily study streak
+        daily_streak = await self.get_streak(student_id, "daily_study")
+        if not daily_streak:
+            daily_streak = Streak(
+                student_id=student_id,
+                streak_type="daily_study",
+                current_count=1,
+                max_count=1,
+                last_activity_date=datetime.now(),
+                is_active=True
+            )
+        else:
+            last_date = daily_streak.last_activity_date.date()
+            if last_date == today:
+                # Already counted today, no change
+                pass
+            elif last_date == today - timedelta(days=1):
+                # Consecutive day, increment streak
+                daily_streak.current_count += 1
+                daily_streak.max_count = max(daily_streak.max_count, daily_streak.current_count)
+                daily_streak.last_activity_date = datetime.now()
+            else:
+                # Streak broken, reset
+                daily_streak.current_count = 1
+                daily_streak.last_activity_date = datetime.now()
+                daily_streak.is_active = True
+        
+        await self.save_streak(daily_streak)
+        streaks["daily_study"] = daily_streak
+        
+        # Check for streak-based badges
+        await self.check_streak_badges(student_id, daily_streak)
+        
+        return streaks
+    
+    async def check_streak_badges(self, student_id: str, streak: Streak):
+        """Check and award streak-based badges"""
+        if streak.streak_type == "daily_study":
+            if streak.current_count >= 7 and not await self.student_has_badge(student_id, "daily_learner"):
+                await self.award_badge(student_id, "daily_learner")
+            elif streak.current_count >= 30 and not await self.student_has_badge(student_id, "study_warrior"):
+                await self.award_badge(student_id, "study_warrior")
+    
+    async def generate_daily_quests(self, student_id: str) -> List[Quest]:
+        """Generate personalized daily quests for a student"""
+        student_stats = await self.get_student_stats(student_id)
+        student_level = await self.get_student_level(student_id)
+        
+        available_quests = []
+        
+        # Always include basic exploration quest
+        available_quests.append(self.quests["daily_explorer"])
+        
+        # Add level-appropriate quests
+        if student_level.current_level >= 3:
+            available_quests.append(self.quests["voice_challenger"])
+        
+        if student_level.current_level >= 5:
+            available_quests.append(self.quests["story_time"])
+        
+        # Add subject-specific quests based on student's activity
+        if student_stats.get("math_interactions", 0) > 5:
+            available_quests.append(self.quests["math_marathon"])
+        
+        # Randomly select 2-3 quests for the day
+        import random
+        daily_quests = random.sample(available_quests, min(3, len(available_quests)))
+        
+        return daily_quests
+    
+    async def update_quest_progress(self, student_id: str, activity_data: Dict) -> List[Dict]:
+        """Update progress on active quests"""
+        active_quests = await self.get_active_quests(student_id)
+        completed_quests = []
+        
+        for quest_progress in active_quests:
+            quest = self.quests[quest_progress.quest_id]
+            updated = False
+            
+            # Update progress based on activity
+            for req_key, req_value in quest.requirements.items():
+                if req_key in activity_data:
+                    current_progress = quest_progress.progress.get(req_key, 0)
+                    quest_progress.progress[req_key] = current_progress + activity_data[req_key]
+                    updated = True
+            
+            # Check if quest is completed
+            if self._is_quest_completed(quest, quest_progress.progress):
+                quest_progress.completed = True
+                quest_progress.completion_date = datetime.now()
+                
+                # Award XP and badge if applicable
+                await self.add_xp(student_id, quest.xp_reward, f"Completed quest: {quest.name}")
+                
+                if quest.badge_reward:
+                    await self.award_badge(student_id, quest.badge_reward)
+                
+                completed_quests.append({
+                    "quest": quest,
+                    "xp_earned": quest.xp_reward,
+                    "badge_earned": quest.badge_reward
+                })
+            
+            if updated:
+                await self.save_quest_progress(quest_progress)
+        
+        return completed_quests
+    
+    def _is_quest_completed(self, quest: Quest, progress: Dict) -> bool:
+        """Check if quest requirements are fully met"""
+        for req_key, req_value in quest.requirements.items():
+            if progress.get(req_key, 0) < req_value:
+                return False
+        return True
+    
+    async def get_leaderboard(self, timeframe: str = "all_time", limit: int = 10) -> List[Dict]:
+        """Get student leaderboard"""
+        # This would typically query a database
+        # For now, return mock data structure
+        self.get_leaderboard = GamificationStorage.get_leaderboard_data
+        
+        # In a real implementation, you'd query student levels and XP
+        # and sort by total XP or level
+
+        return await self.get_leaderboard(timeframe, limit)
+    
+    async def get_student_achievements_summary(self, student_id: str) -> Dict:
+        """Get comprehensive achievement summary for a student"""
+        student_level = await self.get_student_level(student_id)
+        badges = await self.get_student_badges(student_id)
+        streaks = await self.get_student_streaks(student_id)
+        active_quests = await self.get_active_quests(student_id)
+        
+        # Calculate achievement statistics
+        total_badges = len(badges)
+        badges_by_type = {}
+        total_xp = student_level.total_xp_earned
+        
+        for badge_id in badges:
+            badge = self.badges[badge_id]
+            badge_type = badge.badge_type.value
+            badges_by_type[badge_type] = badges_by_type.get(badge_type, 0) + 1
+        
+        # Calculate completion rates
+        total_possible_badges = len(self.badges)
+        completion_rate = (total_badges / total_possible_badges) * 100
+        
+        return {
+            "level": student_level.current_level,
+            "title": student_level.title,
+            "total_xp": total_xp,
+            "current_xp": student_level.current_xp,
+            "xp_to_next_level": student_level.xp_to_next_level,
+            "total_badges": total_badges,
+            "badges_by_type": badges_by_type,
+            "completion_rate": round(completion_rate, 1),
+            "active_streaks": len([s for s in streaks.values() if s.is_active]),
+            "longest_streak": max([s.max_count for s in streaks.values()]) if streaks else 0,
+            "active_quests": len(active_quests),
+            "recent_achievements": await self.get_recent_achievements(student_id, limit=5)
+        }
+    
+    # Placeholder methods for database operations
+    # In a real implementation, these would interact with your database
+    
+    async def get_student_stats(self, student_id: str) -> Dict:
+        self.get_student_stats = GamificationStorage.get_student_stats
+
+    
+    async def student_has_badge(self, student_id: str, badge_id: str) -> bool:
+        """Check if student has a specific badge"""
+        self.student_has_badge = GamificationStorage.student_has_badge
+        return await self.student_has_badge(student_id, badge_id)
+
+    async def award_badge(self, student_id: str, badge_id: str):
+        """Award a badge to a student"""
+        achievement = Achievement(
+            id=f"{student_id}_{badge_id}_{datetime.now().timestamp()}",
+            student_id=student_id,
+            badge_id=badge_id,
+            earned_date=datetime.now()
+        )
+        self.award_badge = GamificationStorage.award_badge
+        print(f"Badge awarded: {badge_id} to student {student_id}")
+    
+    async def add_xp(self, student_id: str, xp_amount: int, reason: str):
+        """Add XP to student and check for level up"""
+        student_level = await self.get_student_level(student_id)
+        student_level.current_xp += xp_amount
+        student_level.total_xp_earned += xp_amount
+
+        self.get_student_badges = GamificationStorage.get_student_badges
+        while student_level.current_xp >= student_level.xp_to_next_level:
+            student_level.current_xp -= student_level.xp_to_next_level
+            student_level.current_level += 1
+
+            self.get_student_level = GamificationStorage.get_student_level
+            level_data = self.level_thresholds[student_level.current_level]
+            student_level.title = level_data["title"]
+            student_level.xp_to_next_level = level_data["xp_required"]
+            
+            print(f"Level up! Student {student_id} reached level {student_level.current_level}")
+        
+        await self.save_student_level(student_level)
+        self.save_student_level = GamificationStorage.save_student_level
+
+    async def get_student_level(self, student_id: str) -> StudentLevel:
+        self.get_student_level = GamificationStorage.get_student_level
+        return await self.get_student_level(student_id)
+
+    
+    async def get_streak(self, student_id: str, streak_type: str) -> Optional[Streak]:
+        self.get_streak = GamificationStorage.get_streak
+        return await self.get_streak(student_id, streak_type)
+    
+    async def save_streak(self, streak: Streak):
+        """Save streak to database"""
+        self.save_streak = GamificationStorage.save_streak
+    
+    async def get_active_quests(self, student_id: str) -> List[StudentQuest]:
+        self.get_active_quests = GamificationStorage.get_active_quests
+        return await self.get_active_quests(student_id)
+
+    async def save_quest_progress(self, quest_progress: StudentQuest):
+        """Save quest progress to database"""
+        self.save_quest_progress = GamificationStorage.save_quest_progress
+        await self.save_quest_progress(quest_progress)
+    
+    async def get_student_badges(self, student_id: str) -> List[str]:
+        self.get_student_badges = GamificationStorage.get_student_badges
+        return await self.get_student_badges(student_id)
+
+    async def get_student_streaks(self, student_id: str) -> Dict[str, Streak]:
+        self.get_student_streaks = GamificationStorage.get_student_streaks
+        return await self.get_student_streaks(student_id)
+    
+    async def save_student_level(self, student_level: StudentLevel):
+        """Save student level to database"""
+        self.save_student_level = GamificationStorage.save_student_level
+        await self.save_student_level(student_level)
+
+    async def get_recent_achievements(self, student_id: str, limit: int = 5) -> List[Dict]:
+        self.get_recent_achievements = GamificationStorage.get_recent_achievements
+        return await self.get_recent_achievements(student_id, limit)
+
+class GamificationStorage:
+    """Handles all gamification data storage operations"""
+    
+    @staticmethod
+    async def get_student_stats(student_id: str) -> Dict:
+        """Get comprehensive student statistics"""
+        if student_id not in student_stats_db:
+            student_stats_db[student_id] = {
+                "messages_sent": 0,
+                "math_interactions": 0,
+                "science_interactions": 0,
+                "reading_interactions": 0,
+                "general_interactions": 0,
+                "books_read": 0,
+                "voice_interactions": 0,
+                "stories_generated": 0,
+                "unique_questions": 0,
+                "different_tutors_used": set(),
+                "late_night_study": 0,
+                "early_morning_study": 0,
+                "total_study_time_minutes": 0,
+                "consecutive_days": 0,
+                "first_chat_date": None,
+                "last_activity_date": None
+            }
+        
+        stats = student_stats_db[student_id].copy()
+        # Convert set to count for different_tutors_used
+        if isinstance(stats.get("different_tutors_used"), set):
+            stats["different_tutors_used"] = len(stats["different_tutors_used"])
+        
+        return stats
+    
+    @staticmethod
+    async def update_student_stats(student_id: str, activity_data: Dict):
+        """Update student statistics based on activity"""
+        stats = await GamificationStorage.get_student_stats(student_id)
+        
+        # Update based on activity type
+        for key, value in activity_data.items():
+            if key == "different_tutors_used" and isinstance(stats[key], set):
+                stats[key].add(value)
+            elif key in stats:
+                if isinstance(value, (int, float)):
+                    stats[key] += value
+                else:
+                    stats[key] = value
+        
+        # Update timestamps
+        stats["last_activity_date"] = datetime.now()
+        if stats["first_chat_date"] is None:
+            stats["first_chat_date"] = datetime.now()
+        
+        student_stats_db[student_id] = stats
+    
+    @staticmethod
+    async def student_has_badge(student_id: str, badge_id: str) -> bool:
+        """Check if student has earned a specific badge"""
+        if student_id not in student_badges_db:
+            return False
+        
+        achievements = student_badges_db[student_id]
+        return any(achievement.badge_id == badge_id for achievement in achievements)
+    
+    @staticmethod
+    async def award_badge(student_id: str, badge_id: str):
+        """Award a badge to a student"""
+        if student_id not in student_badges_db:
+            student_badges_db[student_id] = []
+        
+        # Check if badge already awarded
+        if await GamificationStorage.student_has_badge(student_id, badge_id):
+            return
+        
+        achievement = Achievement(
+            id=f"{student_id}_{badge_id}_{datetime.now().timestamp()}",
+            student_id=student_id,
+            badge_id=badge_id,
+            earned_date=datetime.now()
+        )
+        
+        student_badges_db[student_id].append(achievement)
+        print(f"🏆 Badge awarded: {badge_id} to student {student_id}")
+    
+    @staticmethod
+    async def get_student_badges(student_id: str) -> List[str]:
+        """Get list of badge IDs earned by student"""
+        if student_id not in student_badges_db:
+            return []
+        
+        return [achievement.badge_id for achievement in student_badges_db[student_id]]
+    
+    @staticmethod
+    async def get_student_level(student_id: str) -> StudentLevel:
+        """Get student's current level information"""
+        if student_id not in student_levels_db:
+            # Initialize new student at level 1
+            student_levels_db[student_id] = StudentLevel(
+                student_id=student_id,
+                current_level=1,
+                current_xp=0,
+                xp_to_next_level=100,  # First level requires 100 XP
+                total_xp_earned=0,
+                title="Curious Beginner"
+            )
+        
+        return student_levels_db[student_id]
+    
+    @staticmethod
+    async def save_student_level(student_level: StudentLevel):
+        """Save student level to storage"""
+        student_levels_db[student_level.student_id] = student_level
+        print(f"📊 Level updated for student {student_level.student_id}: Level {student_level.current_level} - {student_level.title}")
+    
+    @staticmethod
+    async def get_streak(student_id: str, streak_type: str) -> Optional[Streak]:
+        """Get a specific streak for a student"""
+        if student_id not in student_streaks_db:
+            student_streaks_db[student_id] = {}
+        
+        return student_streaks_db[student_id].get(streak_type)
+    
+    @staticmethod
+    async def save_streak(streak: Streak):
+        """Save streak to storage"""
+        if streak.student_id not in student_streaks_db:
+            student_streaks_db[streak.student_id] = {}
+        
+        student_streaks_db[streak.student_id][streak.streak_type] = streak
+        
+        if streak.is_active:
+            print(f"🔥 Streak updated: {streak.streak_type} - {streak.current_count} days for student {streak.student_id}")
+    
+    @staticmethod
+    async def get_student_streaks(student_id: str) -> Dict[str, Streak]:
+        """Get all streaks for a student"""
+        if student_id not in student_streaks_db:
+            return {}
+        
+        return student_streaks_db[student_id]
+    
+    @staticmethod
+    async def get_active_quests(student_id: str) -> List[StudentQuest]:
+        """Get student's active quests"""
+        if student_id not in student_quests_db:
+            return []
+        
+        now = datetime.now()
+        active_quests = []
+        
+        for quest in student_quests_db[student_id]:
+            if quest.completed:
+                continue
+            
+            # Check if quest has expired
+            if quest.start_date and hasattr(quest, 'time_limit_hours'):
+                quest_obj = gamification_engine.quests.get(quest.quest_id)
+                if quest_obj and quest_obj.time_limit_hours:
+                    expiry_time = quest.start_date + timedelta(hours=quest_obj.time_limit_hours)
+                    if now > expiry_time:
+                        continue
+            
+            active_quests.append(quest)
+        
+        return active_quests
+    
+    @staticmethod
+    async def save_quest_progress(quest_progress: StudentQuest):
+        """Save quest progress to storage"""
+        if quest_progress.student_id not in student_quests_db:
+            student_quests_db[quest_progress.student_id] = []
+        
+        # Update existing quest or add new one
+        quests = student_quests_db[quest_progress.student_id]
+        for i, existing_quest in enumerate(quests):
+            if existing_quest.quest_id == quest_progress.quest_id:
+                quests[i] = quest_progress
+                return
+        
+        # Add new quest if not found
+        quests.append(quest_progress)
+    
+    @staticmethod
+    async def start_quest(student_id: str, quest_id: str):
+        """Start a new quest for a student"""
+        student_quest = StudentQuest(
+            quest_id=quest_id,
+            student_id=student_id,
+            start_date=datetime.now(),
+            progress={}
+        )
+        
+        await GamificationStorage.save_quest_progress(student_quest)
+        print(f"🎯 Quest started: {quest_id} for student {student_id}")
+    
+    @staticmethod
+    async def get_recent_achievements(student_id: str, limit: int = 5) -> List[Dict]:
+        """Get recent achievements for a student"""
+        if student_id not in student_badges_db:
+            return []
+        
+        achievements = student_badges_db[student_id]
+        # Sort by earned_date, most recent first
+        sorted_achievements = sorted(achievements, key=lambda x: x.earned_date, reverse=True)
+        
+        recent = []
+        for achievement in sorted_achievements[:limit]:
+            badge = gamification_engine.badges[achievement.badge_id]
+            recent.append({
+                "id": achievement.id,
+                "badge_name": badge.name,
+                "badge_icon": badge.icon,
+                "earned_date": achievement.earned_date.isoformat(),
+                "xp_reward": badge.xp_reward
+            })
+        
+        return recent
+    
+    @staticmethod
+    async def get_leaderboard_data(timeframe: str = "all_time", limit: int = 10) -> List[Dict]:
+        """Get leaderboard data for all students"""
+        leaderboard = []
+        
+        for student_id, level_data in student_levels_db.items():
+            # Get student info (you might want to anonymize this)
+            student_name = f"Student {student_id[-4:]}"  # Show last 4 chars of ID
+            
+            # Get additional stats
+            badges_count = len(await GamificationStorage.get_student_badges(student_id))
+            
+            leaderboard.append({
+                "student_id": student_id,
+                "student_name": student_name,
+                "level": level_data.current_level,
+                "total_xp": level_data.total_xp_earned,
+                "title": level_data.title,
+                "badges_earned": badges_count
+            })
+        
+        # Sort by total XP (descending)
+        leaderboard.sort(key=lambda x: x["total_xp"], reverse=True)
+        
+        # Add ranks
+        for i, entry in enumerate(leaderboard[:limit]):
+            entry["rank"] = i + 1
+        
+        return leaderboard[:limit]
+    
+    @staticmethod
+    def export_student_data(student_id: str) -> Dict:
+        """Export all gamification data for a student"""
+        return {
+            "student_id": student_id,
+            "level": student_levels_db.get(student_id),
+            "badges": student_badges_db.get(student_id, []),
+            "streaks": student_streaks_db.get(student_id, {}),
+            "quests": student_quests_db.get(student_id, []),
+            "stats": student_stats_db.get(student_id, {}),
+            "export_date": datetime.now().isoformat()
+        }
+    
+    @staticmethod
+    def get_system_stats() -> Dict:
+        """Get system-wide gamification statistics"""
+        total_students = len(student_levels_db)
+        total_badges_awarded = sum(len(badges) for badges in student_badges_db.values())
+        
+        # Level distribution
+        level_distribution = {}
+        for level_data in student_levels_db.values():
+            level = level_data.current_level
+            level_distribution[level] = level_distribution.get(level, 0) + 1
+        
+        # Most popular badges
+        badge_popularity = {}
+        for badges in student_badges_db.values():
+            for achievement in badges:
+                badge_id = achievement.badge_id
+                badge_popularity[badge_id] = badge_popularity.get(badge_id, 0) + 1
+        
+        return {
+            "total_students": total_students,
+            "total_badges_awarded": total_badges_awarded,
+            "average_level": sum(ld.current_level for ld in student_levels_db.values()) / max(total_students, 1),
+            "level_distribution": level_distribution,
+            "most_popular_badges": sorted(badge_popularity.items(), key=lambda x: x[1], reverse=True)[:10]
+        }
+
 
 # Configuration - Add your API key here or set as environment variable
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "your-openai-api-key-here")
