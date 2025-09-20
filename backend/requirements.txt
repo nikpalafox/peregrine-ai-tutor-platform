@@ -11,11 +11,11 @@ httpx==0.25.2
 requests==2.31.0
 python-multipart==0.0.6
 
-# Data handling
+# Data handling and validation
 pydantic==2.5.0
 python-dotenv==1.0.0
 
-# Date/Time
+# Date/Time handling (for gamification streaks and timestamps)
 python-dateutil==2.8.2
 
 # Development and Testing
@@ -26,7 +26,7 @@ black==23.11.0
 flake8==6.1.0
 pre-commit==3.5.0
 
-# Database (for future use)
+# Database (for future use when you migrate from in-memory storage)
 sqlalchemy==2.0.23
 alembic==1.13.1
 psycopg2-binary==2.9.9
@@ -40,13 +40,25 @@ python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 
 # CORS and middleware
-# Note: CORS is handled by FastAPI's CORSMiddleware, no external package needed
+python-cors==1.7.0
 
 # Optional: For production deployment
 gunicorn==21.2.0
 
-# Optional: For caching
+# Optional: For caching (useful for leaderboards and stats)
 redis==5.0.1
 
 # Optional: For file handling
 aiofiles==23.2.1
+
+# NEW: Gamification specific dependencies
+# (These are already covered by the above, but noting what gamification uses)
+
+# enum support (built into Python 3.4+, so no install needed)
+# json support (built into Python, so no install needed)
+# typing support (built into Python 3.5+, so no install needed)
+# datetime support (built into Python, so no install needed)
+
+# Additional utilities that might be useful for gamification
+schedule==1.2.0  # For daily quest resets and streak management
+pytz==2023.3     # For timezone handling in global apps
