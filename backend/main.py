@@ -39,6 +39,13 @@ class ChatMessage(BaseModel):
     student_id: str
     tutor_type: str = "general"  # math, science, reading, general
 
+class GamificationActivityRequest(BaseModel):
+    student_id: str
+    activity_type: str  # "message_sent", "voice_used", "book_generated", etc.
+    activity_data: Dict = {}
+    subject: Optional[str] = None  # math, science, reading
+    tutor_type: Optional[str] = None
+
 class BookRequest(BaseModel):
     student_id: str
     topic: str
@@ -1574,8 +1581,8 @@ async def get_student(student_id: str):
     return students_db[student_id]
 
 @app.post("/api/chat")
-async def chat_with_tutor(message: ChatMessage):
-    """Send message to AI tutor and get response"""
+async def chat_with_tutor(message: ChatMessage):  # Note: ChatMessage instead of Message
+    """Enhanced chat endpoint with gamification tracking"""
     if message.student_id not in students_db:
         raise HTTPException(status_code=404, detail="Student not found")
     
@@ -1596,6 +1603,22 @@ async def chat_with_tutor(message: ChatMessage):
     }
     conversations_db[message.student_id].append(conversation_entry)
     
+    # 🎮 GAMIFICATION: Record activity
+    activity_data = GamificationActivityRequest(
+        student_id=message.student_id,
+        activity_type="message_sent",
+        subject=detect_subject_from_message(message.content),
+        tutor_type=message.tutor_type,
+        activity_data={"current_hour": datetime.now().hour}
+    )
+    
+    # Process gamification
+    try:
+        gamification_response = await record_activity(activity_data)
+    except Exception as e:
+        print(f"Gamification error: {e}")
+        gamification_response = {"activity_processed": False}
+    
     # Update progress tracking
     progress_db[message.student_id]["total_messages"] += 1
     progress_db[message.student_id]["last_active"] = datetime.now().isoformat()
@@ -1606,11 +1629,12 @@ async def chat_with_tutor(message: ChatMessage):
         if topic not in progress_db[message.student_id]["topics_covered"]:
             progress_db[message.student_id]["topics_covered"].append(topic)
     
-    return ChatResponse(
-        response=ai_response,
-        student_id=message.student_id,
-        timestamp=conversation_entry["timestamp"]
-    )
+    return {
+        "response": ai_response,
+        "student_id": message.student_id,
+        "timestamp": conversation_entry["timestamp"],
+        "gamification": gamification_response  # 🎮 Include gamification data
+    }
 
 @app.post("/api/generate-chapter")
 async def generate_chapter(request: BookRequest):
