@@ -569,14 +569,7 @@ class GamificationEngine:
     
     async def get_leaderboard(self, timeframe: str = "all_time", limit: int = 10) -> List[Dict]:
         """Get student leaderboard"""
-        # This would typically query a database
-        # For now, return mock data structure
-        self.get_leaderboard = GamificationStorage.get_leaderboard_data
-        
-        # In a real implementation, you'd query student levels and XP
-        # and sort by total XP or level
-
-        return await self.get_leaderboard(timeframe, limit)
+        return await GamificationStorage.get_leaderboard_data(timeframe, limit)
     
     async def get_student_achievements_summary(self, student_id: str) -> Dict:
         """Get comprehensive achievement summary for a student"""
