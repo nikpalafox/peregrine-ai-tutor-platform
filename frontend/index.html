@@ -48,6 +48,179 @@
             box-shadow: 0 2px 10px rgba(0,0,0,0.05);
         }
 
+        /* Gamification Styles */
+        .level-badge {
+            background: linear-gradient(135deg, #ffd700 0%, #ffa500 100%);
+            color: white;
+            padding: 8px 15px;
+            border-radius: 20px;
+            font-weight: bold;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 0.9em;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+
+        .xp-bar {
+            background: #eee;
+            height: 8px;
+            border-radius: 4px;
+            margin: 10px 0;
+            overflow: hidden;
+        }
+
+        .xp-progress {
+            height: 100%;
+            background: linear-gradient(90deg, #4CAF50 0%, #8BC34A 100%);
+            transition: width 0.3s ease;
+        }
+
+        .badge-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .badge {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 10px;
+            text-align: center;
+            cursor: pointer;
+            transition: transform 0.2s;
+            position: relative;
+        }
+
+        .badge:hover {
+            transform: translateY(-2px);
+        }
+
+        .badge.locked {
+            opacity: 0.5;
+        }
+
+        .badge-icon {
+            font-size: 24px;
+            margin-bottom: 5px;
+        }
+
+        .quest-item {
+            background: #1a1a1a;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 12px;
+            border: 1px solid #333;
+            transition: all 0.3s ease;
+        }
+
+        .quest-item:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .quest-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .quest-icon {
+            font-size: 1.2em;
+            margin-right: 8px;
+        }
+
+        .quest-name {
+            flex-grow: 1;
+            font-weight: 600;
+        }
+
+        .quest-description {
+            color: #888;
+            font-size: 0.9em;
+            margin-bottom: 12px;
+        }
+
+        .quest-progress {
+            height: 6px;
+            background: #333;
+            border-radius: 3px;
+            margin-bottom: 8px;
+            overflow: hidden;
+        }
+
+        .quest-progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #3498db, #2ecc71);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        .quest-rewards {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .xp-reward {
+            color: #f1c40f;
+            font-weight: 600;
+        }
+
+        .badge-reward {
+            color: #e67e22;
+            font-weight: 600;
+        }
+
+        .streak-counter {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            background: #ff9800;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 0.9em;
+        }
+
+        .achievement-popup {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: white;
+            border-radius: 15px;
+            padding: 15px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            animation: slideIn 0.3s ease-out;
+            z-index: 1000;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        .difficulty-badge {
+            font-size: 0.8em;
+            padding: 2px 8px;
+            border-radius: 10px;
+            margin-left: 5px;
+        }
+
+        .difficulty-easy { background: #2ecc71; color: white; }
+        .difficulty-medium { background: #f39c12; color: white; }
+        .difficulty-hard { background: #e74c3c; color: white; }
+
         .sidebar-section h4 {
             margin-bottom: 15px;
             color: #333;
@@ -524,6 +697,77 @@
         <!-- Main Chat Interface -->
         <div id="mainInterface" class="container" style="display: none;">
             <div class="sidebar">
+                <!-- Gamification Stats Section -->
+                <div class="sidebar-section" id="gamificationStats">
+                    <div class="level-badge">
+                        <span id="levelIcon">🎓</span>
+                        Level <span id="currentLevel">1</span>
+                        <span id="levelTitle">Curious Beginner</span>
+                    </div>
+                    <div class="xp-bar">
+                        <div class="xp-progress" id="xpProgress" style="width: 0%"></div>
+                    </div>
+                    <div style="font-size: 0.8em; color: #666;">
+                        <span id="currentXP">0</span> / <span id="xpToNext">100</span> XP
+                    </div>
+                    <div class="streak-counter" id="currentStreak">
+                        <span>🔥</span> 0 Day Streak
+                    </div>
+                </div>
+
+                <!-- Badges and Achievements Section -->
+                <div class="sidebar-section">
+                    <h3>Badges & Achievements</h3>
+                    <div class="badge-grid" id="badgeContainer">
+                        <!-- Badges will be dynamically added here -->
+                    </div>
+                    <div style="margin-top: 10px; text-align: center;">
+                        <button onclick="showAllBadges()" class="secondary-button">View All Badges</button>
+                    </div>
+                </div>
+
+                <!-- Achievement Progress Modal -->
+                <div id="achievementModal" class="modal" style="display: none;">
+                    <div class="modal-content">
+                        <span class="close">&times;</span>
+                        <h2>All Badges</h2>
+                        <div class="badge-categories">
+                            <button class="badge-filter active" data-filter="all">All</button>
+                            <button class="badge-filter" data-filter="achievement">Achievements</button>
+                            <button class="badge-filter" data-filter="milestone">Milestones</button>
+                            <button class="badge-filter" data-filter="subject">Subjects</button>
+                            <button class="badge-filter" data-filter="special">Special</button>
+                        </div>
+                        <div class="all-badges-grid" id="allBadgesContainer">
+                            <!-- All badges will be displayed here -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Daily Quests Section -->
+                <div class="sidebar-section">
+                    <h3>Daily Quests</h3>
+                    <div id="questContainer">
+                        <!-- Quests will be dynamically added here -->
+                    </div>
+                    <div id="questTemplate" style="display: none;">
+                        <div class="quest-item">
+                            <div class="quest-header">
+                                <span class="quest-icon">📜</span>
+                                <span class="quest-name"></span>
+                                <span class="difficulty-badge"></span>
+                            </div>
+                            <div class="quest-description"></div>
+                            <div class="quest-progress">
+                                <div class="quest-progress-bar"></div>
+                            </div>
+                            <div class="quest-rewards">
+                                <span class="xp-reward">+0 XP</span>
+                                <span class="badge-reward"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
                 <!-- Student Profile -->
                 <div class="sidebar-section">
                     <div class="avatar" id="studentAvatar">A</div>
@@ -1008,6 +1252,87 @@
 
         function generateId() {
             return 'student_' + Math.random().toString(36).substr(2, 9);
+        }
+
+        // Quest management functions
+        async function loadDailyQuests() {
+            try {
+                const response = await fetch(`${API_BASE}/api/students/${currentStudent.id}/quests`);
+                if (response.ok) {
+                    const quests = await response.json();
+                    displayQuests(quests);
+                }
+            } catch (error) {
+                console.log('Could not load quests:', error);
+            }
+        }
+
+        function displayQuests(quests) {
+            const container = document.getElementById('questContainer');
+            container.innerHTML = '';
+
+            quests.forEach(quest => {
+                const questElement = document.createElement('div');
+                questElement.className = 'quest-item';
+                questElement.dataset.questId = quest.id;
+
+                questElement.innerHTML = `
+                    <div class="quest-header">
+                        <span class="quest-icon">${getQuestIcon(quest.type)}</span>
+                        <span class="quest-name">${quest.name}</span>
+                        <span class="difficulty-badge difficulty-${quest.difficulty.toLowerCase()}">${quest.difficulty}</span>
+                    </div>
+                    <div class="quest-description">${quest.description}</div>
+                    <div class="quest-progress">
+                        <div class="quest-progress-bar" style="width: ${(quest.current_progress / quest.target_progress) * 100}%"></div>
+                    </div>
+                    <div class="quest-rewards">
+                        <span class="xp-reward">+${quest.xp_reward} XP</span>
+                        ${quest.badge_reward ? `<span class="badge-reward">${quest.badge_reward}</span>` : ''}
+                    </div>
+                `;
+
+                container.appendChild(questElement);
+            });
+        }
+
+        function getQuestIcon(type) {
+            const icons = {
+                'learning': '📚',
+                'practice': '✏️',
+                'challenge': '🎯',
+                'social': '🤝',
+                'streak': '🔥',
+                'discovery': '🔍',
+                'default': '📜'
+            };
+            return icons[type] || icons.default;
+        }
+
+        function updateQuestProgress(questId, progress) {
+            const questElement = document.querySelector(`.quest-item[data-quest-id="${questId}"]`);
+            if (questElement) {
+                const progressBar = questElement.querySelector('.quest-progress-bar');
+                progressBar.style.width = `${progress}%`;
+
+                if (progress === 100) {
+                    questElement.classList.add('completed');
+                    // Show completion animation/notification
+                    showQuestCompletion(questElement.querySelector('.quest-name').textContent);
+                }
+            }
+        }
+
+        function showQuestCompletion(questName) {
+            addMessageToChat(`🎉 Congratulations! You've completed the quest: "${questName}"!`, 'ai');
+            // Could add visual effects, sounds, or other celebrations here
+        }
+
+        // Add quest loading to the student setup
+        const originalShowMainInterface = showMainInterface;
+        showMainInterface = function() {
+            originalShowMainInterface();
+            loadDailyQuests();
         }
     </script>
 </body>
