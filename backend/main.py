@@ -1229,6 +1229,25 @@ class GamificationStorage:
             "most_popular_badges": sorted(badge_popularity.items(), key=lambda x: x[1], reverse=True)[:10]
         }
 
+# Gamification API Models for requests/responses
+class XPGainResponse(BaseModel):
+    xp_gained: int
+    total_xp: int
+    level_up: bool = False
+    new_level: Optional[int] = None
+    new_title: Optional[str] = None
+
+class BadgeEarnedResponse(BaseModel):
+    badge: Badge
+    xp_bonus: int
+
+class GamificationActivityRequest(BaseModel):
+    student_id: str
+    activity_type: str  # "message_sent", "voice_used", "book_generated", etc.
+    activity_data: Dict = {}
+    subject: Optional[str] = None  # math, science, reading
+    tutor_type: Optional[str] = None
+
 
 # Configuration - Add your API key here or set as environment variable
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "your-openai-api-key-here")
@@ -1638,13 +1657,12 @@ async def chat_with_tutor(message: ChatMessage):  # Note: ChatMessage instead of
 
 @app.post("/api/generate-chapter")
 async def generate_chapter(request: BookRequest):
-    """Generate a custom chapter for the student"""
+    """Generate a custom chapter for the student with gamification"""
     if request.student_id not in students_db:
         raise HTTPException(status_code=404, detail="Student not found")
     
     student = Student(**students_db[request.student_id])
     
-    # Get or create AI tutor for this student
     if request.student_id not in student_contexts:
         student_contexts[request.student_id] = AITutor(student)
     
@@ -1660,7 +1678,23 @@ async def generate_chapter(request: BookRequest):
     
     progress_db[request.student_id]["generated_books"].append(chapter)
     
-    return chapter
+    # 🎮 Record gamification activity
+    activity_data = GamificationActivityRequest(
+        student_id=request.student_id,
+        activity_type="book_generated",
+        activity_data={"topic": request.topic}
+    )
+    
+    try:
+        gamification_response = await record_activity(activity_data)
+    except Exception as e:
+        print(f"Gamification error: {e}")
+        gamification_response = {"activity_processed": False}
+    
+    return {
+        **chapter,
+        "gamification": gamification_response
+    }
 
 @app.get("/api/students/{student_id}/books")
 async def get_student_books(student_id: str):
@@ -1719,6 +1753,469 @@ async def parent_dashboard(student_id: str):
             "engagement_score": 85
         }
     }
+# Gamification API Endpoints
+
+@app.post("/api/gamification/activity")
+async def record_activity(activity: GamificationActivityRequest):
+    """Record student activity and update gamification metrics"""
+    try:
+        # Process the activity and update stats
+        activity_stats = await process_student_activity(activity)
+        
+        # Update streaks
+        updated_streaks = await gamification_engine.update_streaks(activity.student_id)
+        
+        # Check for new badges
+        new_badges = await gamification_engine.check_and_award_badges(
+            activity.student_id, 
+            activity_stats
+        )
+        
+        # Update quest progress
+        completed_quests = await gamification_engine.update_quest_progress(
+            activity.student_id, 
+            activity_stats
+        )
+        
+        response = {
+            "activity_processed": True,
+            "xp_gained": activity_stats.get("xp_gained", 0),
+            "new_badges": [
+                {
+                    "id": badge.id,
+                    "name": badge.name,
+                    "description": badge.description,
+                    "icon": badge.icon,
+                    "xp_reward": badge.xp_reward
+                } for badge in new_badges
+            ],
+            "completed_quests": completed_quests,
+            "streak_updates": {
+                streak_type: {
+                    "current_count": streak.current_count,
+                    "is_record": streak.current_count >= streak.max_count
+                } for streak_type, streak in updated_streaks.items()
+            }
+        }
+        
+        return response
+        
+    except Exception as e:
+        print(f"Gamification activity error: {e}")
+        return {"activity_processed": False, "error": str(e)}
+
+@app.get("/api/gamification/student/{student_id}/dashboard")
+async def get_student_dashboard(student_id: str):
+    """Get comprehensive gamification dashboard for student"""
+    dashboard = await gamification_engine.get_student_achievements_summary(student_id)
+    
+    # Add current daily quests
+    daily_quests = await gamification_engine.generate_daily_quests(student_id)
+    dashboard["daily_quests"] = [
+        {
+            "id": quest.id,
+            "name": quest.name,
+            "description": quest.description,
+            "xp_reward": quest.xp_reward,
+            "difficulty": quest.difficulty.value,
+            "time_limit_hours": quest.time_limit_hours,
+            "progress": await get_quest_progress(student_id, quest.id)
+        } for quest in daily_quests
+    ]
+    
+    # Add available badges to work toward
+    available_badges = await get_available_badges(student_id)
+    dashboard["next_badges"] = available_badges[:5]  # Next 5 badges they can earn
+    
+    return dashboard
+
+@app.get("/api/gamification/student/{student_id}/badges")
+async def get_student_badges(student_id: str):
+    """Get all badges earned by student"""
+    badge_ids = await gamification_engine.get_student_badges(student_id)
+    
+    badges = []
+    for badge_id in badge_ids:
+        badge = gamification_engine.badges[badge_id]
+        badges.append({
+            "id": badge.id,
+            "name": badge.name,
+            "description": badge.description,
+            "icon": badge.icon,
+            "badge_type": badge.badge_type.value,
+            "difficulty": badge.difficulty.value,
+            "rarity_score": badge.rarity_score,
+            "earned_date": "2024-01-15"  # Would come from database
+        })
+    
+    # Group badges by type
+    badges_by_type = {
+        "achievement": [],
+        "milestone": [],
+        "streak": [],
+        "subject": [],
+        "special": []
+    }
+    
+    for badge in badges:
+        badges_by_type[badge["badge_type"]].append(badge)
+    
+    return {
+        "total_badges": len(badges),
+        "badges": badges,
+        "badges_by_type": badges_by_type,
+        "completion_percentage": (len(badges) / len(gamification_engine.badges)) * 100
+    }
+
+@app.get("/api/gamification/student/{student_id}/level")
+async def get_student_level_info(student_id: str):
+    """Get detailed level information for student"""
+    level_info = await gamification_engine.get_student_level(student_id)
+    level_data = gamification_engine.level_thresholds[level_info.current_level]
+    
+    # Calculate progress to next level
+    progress_percentage = (level_info.current_xp / level_info.xp_to_next_level) * 100
+    
+    return {
+        "current_level": level_info.current_level,
+        "title": level_info.title,
+        "current_xp": level_info.current_xp,
+        "xp_to_next_level": level_info.xp_to_next_level,
+        "total_xp_earned": level_info.total_xp_earned,
+        "progress_percentage": round(progress_percentage, 1),
+        "perks": level_data["perks"],
+        "next_level_preview": {
+            "level": level_info.current_level + 1,
+            "title": gamification_engine.level_thresholds.get(level_info.current_level + 1, {}).get("title", "Master Scholar"),
+            "perks": gamification_engine.level_thresholds.get(level_info.current_level + 1, {}).get("perks", [])
+        }
+    }
+
+@app.get("/api/gamification/student/{student_id}/streaks")
+async def get_student_streaks(student_id: str):
+    """Get all streaks for student"""
+    streaks = await gamification_engine.get_student_streaks(student_id)
+    
+    streak_data = []
+    for streak_type, streak in streaks.items():
+        streak_data.append({
+            "type": streak_type,
+            "name": streak_type.replace("_", " ").title(),
+            "current_count": streak.current_count,
+            "max_count": streak.max_count,
+            "is_active": streak.is_active,
+            "last_activity": streak.last_activity_date.isoformat(),
+            "icon": get_streak_icon(streak_type)
+        })
+    
+    return {
+        "active_streaks": len([s for s in streak_data if s["is_active"]]),
+        "longest_streak": max([s["max_count"] for s in streak_data]) if streak_data else 0,
+        "streaks": streak_data
+    }
+
+@app.get("/api/gamification/student/{student_id}/quests")
+async def get_student_quests(student_id: str):
+    """Get active and available quests for student"""
+    active_quests = await gamification_engine.get_active_quests(student_id)
+    daily_quests = await gamification_engine.generate_daily_quests(student_id)
+    
+    # Format active quests
+    active_quest_data = []
+    for quest_progress in active_quests:
+        quest = gamification_engine.quests[quest_progress.quest_id]
+        active_quest_data.append({
+            "id": quest.id,
+            "name": quest.name,
+            "description": quest.description,
+            "xp_reward": quest.xp_reward,
+            "difficulty": quest.difficulty.value,
+            "time_limit_hours": quest.time_limit_hours,
+            "progress": quest_progress.progress,
+            "requirements": quest.requirements,
+            "completion_percentage": calculate_quest_completion(quest, quest_progress.progress),
+            "time_remaining": calculate_time_remaining(quest_progress.start_date, quest.time_limit_hours) if quest.time_limit_hours else None
+        })
+    
+    # Format daily quests
+    daily_quest_data = []
+    for quest in daily_quests:
+        progress = await get_quest_progress(student_id, quest.id)
+        daily_quest_data.append({
+            "id": quest.id,
+            "name": quest.name,
+            "description": quest.description,
+            "xp_reward": quest.xp_reward,
+            "difficulty": quest.difficulty.value,
+            "requirements": quest.requirements,
+            "progress": progress,
+            "completion_percentage": calculate_quest_completion(quest, progress)
+        })
+    
+    return {
+        "active_quests": active_quest_data,
+        "daily_quests": daily_quest_data,
+        "completed_today": len([q for q in active_quest_data if q["completion_percentage"] >= 100])
+    }
+
+@app.get("/api/gamification/leaderboard")
+async def get_leaderboard(timeframe: str = "all_time", limit: int = 10):
+    """Get student leaderboard"""
+    leaderboard = await gamification_engine.get_leaderboard(timeframe, limit)
+    
+    # Mock data for now - in real implementation, query database
+    mock_leaderboard = [
+        {
+            "rank": 1,
+            "student_name": "Alex S.",  # Anonymized
+            "level": 15,
+            "total_xp": 12500,
+            "badges_earned": 28,
+            "title": "Learning Legend"
+        },
+        {
+            "rank": 2,
+            "student_name": "Jordan M.",
+            "level": 12,
+            "total_xp": 9800,
+            "badges_earned": 22,
+            "title": "Study Star"
+        },
+        {
+            "rank": 3,
+            "student_name": "Taylor R.",
+            "level": 11,
+            "total_xp": 8900,
+            "badges_earned": 19,
+            "title": "Bright Mind"
+        }
+    ]
+    
+    return {
+        "timeframe": timeframe,
+        "leaderboard": mock_leaderboard,
+        "total_students": len(mock_leaderboard)
+    }
+
+@app.get("/api/gamification/badges/catalog")
+async def get_badge_catalog():
+    """Get all available badges organized by category"""
+    badges_by_category = {
+        "achievement": [],
+        "milestone": [],
+        "streak": [],
+        "subject": [],
+        "special": []
+    }
+    
+    for badge_id, badge in gamification_engine.badges.items():
+        badge_data = {
+            "id": badge.id,
+            "name": badge.name,
+            "description": badge.description,
+            "icon": badge.icon,
+            "difficulty": badge.difficulty.value,
+            "xp_reward": badge.xp_reward,
+            "rarity_score": badge.rarity_score,
+            "requirements": badge.requirements
+        }
+        badges_by_category[badge.badge_type.value].append(badge_data)
+    
+    # Sort by difficulty and rarity
+    for category in badges_by_category:
+        badges_by_category[category].sort(key=lambda x: (x["difficulty"], -x["rarity_score"]))
+    
+    return {
+        "total_badges": len(gamification_engine.badges),
+        "badges_by_category": badges_by_category,
+        "difficulty_levels": ["bronze", "silver", "gold", "platinum"]
+    }
+
+@app.post("/api/gamification/student/{student_id}/celebrate")
+async def celebrate_achievement(student_id: str, achievement_data: Dict):
+    """Record when student celebrates an achievement (for engagement tracking)"""
+    celebration_type = achievement_data.get("type")  # "badge_earned", "level_up", "quest_completed"
+    achievement_id = achievement_data.get("achievement_id")
+    
+    # Award small XP bonus for celebrating
+    await gamification_engine.add_xp(student_id, 10, f"Celebrated: {celebration_type}")
+    
+    return {
+        "celebration_recorded": True,
+        "bonus_xp": 10,
+        "message": "Way to celebrate your achievement! Keep up the great work! 🎉"
+    }
+
+# Helper functions for API endpoints
+
+async def process_student_activity(activity: GamificationActivityRequest) -> Dict:
+    """Process student activity and return stats for gamification"""
+    stats = {}
+    base_xp = 10  # Base XP for any activity
+    
+    activity_xp_map = {
+        "message_sent": 10,
+        "voice_used": 15,
+        "book_generated": 25,
+        "book_read": 20,
+        "subject_switch": 5,
+        "late_night_study": 20,
+        "early_morning_study": 20
+    }
+    
+    # Calculate XP for this activity
+    xp_gained = activity_xp_map.get(activity.activity_type, base_xp)
+    
+    # Bonus XP for subject-specific activities
+    if activity.subject:
+        stats[f"{activity.subject}_interactions"] = stats.get(f"{activity.subject}_interactions", 0) + 1
+        xp_gained += 5  # Bonus for subject-specific learning
+    
+    # Track activity type
+    stats[activity.activity_type] = stats.get(activity.activity_type, 0) + 1
+    
+    # Add XP to student
+    await gamification_engine.add_xp(activity.student_id, xp_gained, f"Activity: {activity.activity_type}")
+    stats["xp_gained"] = xp_gained
+    
+    # Track time-based achievements
+    current_hour = datetime.now().hour
+    if current_hour >= 21 or current_hour <= 5:  # 9 PM to 5 AM
+        stats["late_night_study"] = 1
+    elif current_hour <= 7:  # Before 7 AM
+        stats["early_morning_study"] = 1
+    
+    return stats
+
+async def get_quest_progress(student_id: str, quest_id: str) -> Dict:
+    """Get progress for a specific quest"""
+    # Mock implementation - would query database
+    return {"messages_today": 2, "voice_interactions_today": 1}
+
+async def get_available_badges(student_id: str) -> List[Dict]:
+    """Get badges that student can still earn"""
+    earned_badges = await gamification_engine.get_student_badges(student_id)
+    student_stats = await gamification_engine.get_student_stats(student_id)
+    
+    available = []
+    for badge_id, badge in gamification_engine.badges.items():
+        if badge_id not in earned_badges:
+            # Calculate progress toward badge
+            progress = calculate_badge_progress(badge, student_stats)
+            available.append({
+                "id": badge.id,
+                "name": badge.name,
+                "description": badge.description,
+                "icon": badge.icon,
+                "xp_reward": badge.xp_reward,
+                "progress_percentage": progress,
+                "requirements": badge.requirements
+            })
+    
+    # Sort by progress (closest to completion first)
+    available.sort(key=lambda x: x["progress_percentage"], reverse=True)
+    return available
+
+def calculate_badge_progress(badge: Badge, student_stats: Dict) -> float:
+    """Calculate student's progress toward earning a badge"""
+    total_progress = 0
+    requirement_count = len(badge.requirements)
+    
+    for req_key, req_value in badge.requirements.items():
+        current_value = student_stats.get(req_key, 0)
+        progress = min(current_value / req_value, 1.0) * 100
+        total_progress += progress
+    
+    return total_progress / requirement_count if requirement_count > 0 else 0
+
+def calculate_quest_completion(quest, progress: Dict) -> float:
+    """Calculate completion percentage for a quest"""
+    if not quest.requirements:
+        return 0
+    
+    total_progress = 0
+    for req_key, req_value in quest.requirements.items():
+        current_value = progress.get(req_key, 0)
+        req_progress = min(current_value / req_value, 1.0) * 100
+        total_progress += req_progress
+    
+    return total_progress / len(quest.requirements)
+
+def calculate_time_remaining(start_date: datetime, time_limit_hours: int) -> str:
+    """Calculate time remaining for a quest"""
+    if not time_limit_hours:
+        return None
+    
+    end_time = start_date + timedelta(hours=time_limit_hours)
+    remaining = end_time - datetime.now()
+    
+    if remaining.total_seconds() <= 0:
+        return "Expired"
+    
+    hours = int(remaining.total_seconds() // 3600)
+    minutes = int((remaining.total_seconds() % 3600) // 60)
+    
+    if hours > 0:
+        return f"{hours}h {minutes}m"
+    else:
+        return f"{minutes}m"
+
+def get_streak_icon(streak_type: str) -> str:
+    """Get icon for streak type"""
+    icons = {
+        "daily_study": "🔥",
+        "weekly_goals": "⭐",
+        "subject_focus": "🎯",
+        "voice_usage": "🎤",
+        "reading_streak": "📚"
+    }
+    return icons.get(streak_type, "🏆")
+
+# Add to your existing chat endpoint to integrate gamification
+async def enhanced_chat_with_gamification(message: ChatMessage):
+    """Enhanced chat endpoint that includes gamification tracking"""
+    # Your existing chat logic here...
+    
+    # After processing the chat, record the activity for gamification
+    activity_data = GamificationActivityRequest(
+        student_id=message.student_id,
+        activity_type="message_sent",
+        subject=detect_subject_from_message(message.content),
+        tutor_type=message.tutor_type,
+        activity_data={"current_hour": datetime.now().hour}
+    )
+    
+    # Record the gamification activity
+    gamification_response = await record_activity(activity_data)
+    
+    # Include gamification data in chat response
+    chat_response = ChatResponse(
+        response="AI response here...",
+        student_id=message.student_id,
+        timestamp=datetime.now().isoformat()
+    )
+    
+    # Add gamification data to response
+    chat_response.gamification = gamification_response
+    
+    return chat_response
+
+def detect_subject_from_message(message: str) -> Optional[str]:
+    """Detect subject from message content"""
+    message_lower = message.lower()
+    
+    math_keywords = ["math", "calculate", "number", "add", "subtract", "multiply", "divide"]
+    science_keywords = ["science", "experiment", "chemistry", "physics", "biology"]
+    reading_keywords = ["read", "story", "book", "write", "grammar"]
+    
+    if any(keyword in message_lower for keyword in math_keywords):
+        return "math"
+    elif any(keyword in message_lower for keyword in science_keywords):
+        return "science"
+    elif any(keyword in message_lower for keyword in reading_keywords):
+        return "reading"
+    
+    return None
 
 # WebSocket for real-time features (optional for now)
 class ConnectionManager:
@@ -1747,6 +2244,30 @@ async def websocket_endpoint(websocket: WebSocket, student_id: str):
             await manager.send_personal_message(f"Echo: {data}", websocket)
     except WebSocketDisconnect:
         manager.disconnect(websocket)
+
+# Initialize gamification when app starts
+@app.on_event("startup")
+async def startup_event():
+    """Initialize gamification system"""
+    try:
+        # Update gamification engine methods
+        gamification_engine.get_student_stats = GamificationStorage.get_student_stats
+        gamification_engine.student_has_badge = GamificationStorage.student_has_badge
+        gamification_engine.award_badge = GamificationStorage.award_badge
+        gamification_engine.get_student_badges = GamificationStorage.get_student_badges
+        gamification_engine.get_student_level = GamificationStorage.get_student_level
+        gamification_engine.save_student_level = GamificationStorage.save_student_level
+        gamification_engine.get_streak = GamificationStorage.get_streak
+        gamification_engine.save_streak = GamificationStorage.save_streak
+        gamification_engine.get_student_streaks = GamificationStorage.get_student_streaks
+        gamification_engine.get_active_quests = GamificationStorage.get_active_quests
+        gamification_engine.save_quest_progress = GamificationStorage.save_quest_progress
+        gamification_engine.get_recent_achievements = GamificationStorage.get_recent_achievements
+        gamification_engine.get_leaderboard = GamificationStorage.get_leaderboard_data
+        
+        print("✅ Gamification system initialized successfully!")
+    except Exception as e:
+        print(f"❌ Error initializing gamification: {e}")
 
 if __name__ == "__main__":
     import uvicorn
