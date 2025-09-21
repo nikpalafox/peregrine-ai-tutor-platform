@@ -689,6 +689,250 @@ class GamificationEngine:
     async def get_recent_achievements(self, student_id: str, limit: int = 5) -> List[Dict]:
         self.get_recent_achievements = GamificationStorage.get_recent_achievements
         return await self.get_recent_achievements(student_id, limit)
+    
+
+    async def process_student_activity(self, student_id: str, activity_type: str, activity_data: Dict = None) -> Dict:
+        """Process student activity and update all gamification metrics"""
+        if activity_data is None:
+            activity_data = {}
+        
+        results = {
+            "xp_gained": 0,
+            "new_badges": [],
+            "completed_quests": [],
+            "streak_updates": {},
+            "level_up": False
+        }
+        
+        try:
+            # 1. Calculate and award XP
+            xp_result = await XPCalculator.calculate_activity_xp(student_id, activity_type, activity_data)
+            xp_info = await self.add_xp(student_id, xp_result["total_xp"], f"Activity: {activity_type}")
+            
+            results["xp_gained"] = xp_result["total_xp"]
+            results["xp_details"] = xp_result
+            results["level_up"] = xp_info["level_up"]
+            results["level_info"] = xp_info
+            
+            # 2. Update student stats
+            stats_update = {
+                activity_type: 1,
+                "total_activities": 1
+            }
+            
+            # Add subject-specific stats
+            if activity_data.get("subject"):
+                stats_update[f"{activity_data['subject']}_interactions"] = 1
+            
+            # Add tutor-specific stats
+            if activity_data.get("tutor_type"):
+                stats_update["different_tutors_used"] = activity_data["tutor_type"]
+            
+            # Update time-based stats
+            current_hour = datetime.now().hour
+            if current_hour >= 21 or current_hour <= 5:
+                stats_update["late_night_study"] = 1
+            elif current_hour <= 7:
+                stats_update["early_morning_study"] = 1
+            
+            await GamificationStorage.update_student_stats(student_id, stats_update)
+            
+            # 3. Update streaks
+            streak_updates = await self.update_streaks(student_id)
+            results["streak_updates"] = {
+                streak_type: {
+                    "current_count": streak.current_count,
+                    "is_record": streak.current_count >= streak.max_count,
+                    "is_active": streak.is_active
+                } for streak_type, streak in streak_updates.items()
+            }
+            
+            # 4. Check for new badges
+            current_stats = await self.get_student_stats(student_id)
+            new_badges = await self.check_and_award_badges(student_id, current_stats)
+            results["new_badges"] = [
+                {
+                    "id": badge.id,
+                    "name": badge.name,
+                    "description": badge.description,
+                    "icon": badge.icon,
+                    "xp_reward": badge.xp_reward,
+                    "difficulty": badge.difficulty.value,
+                    "rarity_score": badge.rarity_score
+                } for badge in new_badges
+            ]
+            
+            # 5. Update quest progress
+            completed_quests = await self.update_quest_progress(student_id, current_stats)
+            results["completed_quests"] = completed_quests
+            
+            # 6. Check for special achievements
+            await self.check_special_achievements(student_id, activity_type, activity_data)
+            
+        except Exception as e:
+            print(f"Error processing student activity: {e}")
+            results["error"] = str(e)
+        
+        return results
+    
+    async def check_special_achievements(self, student_id: str, activity_type: str, activity_data: Dict):
+        """Check for special time-based and activity-based achievements"""
+        current_hour = datetime.now().hour
+        
+        # Night Owl achievement
+        if current_hour >= 21 or current_hour <= 5:
+            if not await self.student_has_badge(student_id, "night_owl"):
+                await self.award_badge(student_id, "night_owl")
+        
+        # Early Bird achievement
+        if current_hour <= 7:
+            if not await self.student_has_badge(student_id, "early_bird"):
+                await self.award_badge(student_id, "early_bird")
+        
+        # Voice Explorer achievement
+        if activity_type == "voice_used":
+            stats = await self.get_student_stats(student_id)
+            if stats.get("voice_interactions", 0) >= 10:
+                if not await self.student_has_badge(student_id, "voice_explorer"):
+                    await self.award_badge(student_id, "voice_explorer")
+        
+        # Story Creator achievement
+        if activity_type == "book_generated":
+            stats = await self.get_student_stats(student_id)
+            if stats.get("stories_generated", 0) >= 5:
+                if not await self.student_has_badge(student_id, "story_creator"):
+                    await self.award_badge(student_id, "story_creator")
+        
+        # Tutor Whisperer achievement (all 4 tutors in one day)
+        if activity_data.get("tutor_type"):
+            # This would need daily tracking - simplified version
+            stats = await self.get_student_stats(student_id)
+            tutors_used = stats.get("different_tutors_used", set())
+            if isinstance(tutors_used, set) and len(tutors_used) >= 4:
+                if not await self.student_has_badge(student_id, "tutor_whisperer"):
+                    await self.award_badge(student_id, "tutor_whisperer")
+    
+    async def start_daily_quest(self, student_id: str, quest_id: str) -> bool:
+        """Start a daily quest for a student"""
+        try:
+            # Check if quest already active
+            active_quests = await self.get_active_quests(student_id)
+            if any(q.quest_id == quest_id for q in active_quests):
+                return False  # Already active
+            
+            # Create new quest progress
+            quest_progress = StudentQuest(
+                quest_id=quest_id,
+                student_id=student_id,
+                start_date=datetime.now(),
+                progress={}
+            )
+            
+            await self.save_quest_progress(quest_progress)
+            print(f"🎯 Daily quest started: {quest_id} for student {student_id}")
+            return True
+            
+        except Exception as e:
+            print(f"Error starting daily quest: {e}")
+            return False
+    
+    async def get_student_dashboard_data(self, student_id: str) -> Dict:
+        """Get comprehensive dashboard data for a student"""
+        try:
+            # Get all the data
+            level_info = await self.get_student_level(student_id)
+            badges = await self.get_student_badges(student_id)
+            streaks = await self.get_student_streaks(student_id)
+            stats = await self.get_student_stats(student_id)
+            recent_achievements = await self.get_recent_achievements(student_id, 5)
+            active_quests = await self.get_active_quests(student_id)
+            
+            # Generate daily quests if none active
+            if not active_quests:
+                daily_quests = await self.generate_daily_quests(student_id)
+                for quest in daily_quests[:3]:  # Start up to 3 daily quests
+                    await self.start_daily_quest(student_id, quest.id)
+                active_quests = await self.get_active_quests(student_id)
+            
+            # Calculate statistics
+            total_badges = len(badges)
+            badges_by_type = {}
+            for badge_id in badges:
+                badge = self.badges[badge_id]
+                badge_type = badge.badge_type.value
+                badges_by_type[badge_type] = badges_by_type.get(badge_type, 0) + 1
+            
+            active_streak_count = len([s for s in streaks.values() if s.is_active])
+            longest_streak = max([s.max_count for s in streaks.values()]) if streaks else 0
+            
+            return {
+                "student_id": student_id,
+                "level": {
+                    "current_level": level_info.current_level,
+                    "title": level_info.title,
+                    "current_xp": level_info.current_xp,
+                    "xp_to_next_level": level_info.xp_to_next_level,
+                    "total_xp_earned": level_info.total_xp_earned,
+                    "progress_percentage": (level_info.current_xp / level_info.xp_to_next_level) * 100
+                },
+                "badges": {
+                    "total_count": total_badges,
+                    "by_type": badges_by_type,
+                    "completion_rate": (total_badges / len(self.badges)) * 100,
+                    "recent": recent_achievements
+                },
+                "streaks": {
+                    "active_count": active_streak_count,
+                    "longest_streak": longest_streak,
+                    "details": {
+                        streak_type: {
+                            "current": streak.current_count,
+                            "max": streak.max_count,
+                            "active": streak.is_active
+                        } for streak_type, streak in streaks.items()
+                    }
+                },
+                "quests": {
+                    "active_count": len(active_quests),
+                    "details": [
+                        {
+                            "id": quest.quest_id,
+                            "name": self.quests[quest.quest_id].name,
+                            "description": self.quests[quest.quest_id].description,
+                            "progress": quest.progress,
+                            "requirements": self.quests[quest.quest_id].requirements,
+                            "completion_percentage": self._calculate_quest_completion_percentage(quest)
+                        } for quest in active_quests
+                    ]
+                },
+                "stats": {
+                    "total_messages": stats.get("messages_sent", 0),
+                    "subjects_explored": sum([
+                        1 for key in stats.keys() 
+                        if key.endswith("_interactions") and stats[key] > 0
+                    ]),
+                    "voice_interactions": stats.get("voice_interactions", 0),
+                    "books_generated": stats.get("stories_generated", 0)
+                }
+            }
+            
+        except Exception as e:
+            print(f"Error getting dashboard data: {e}")
+            return {"error": str(e)}
+    
+    def _calculate_quest_completion_percentage(self, quest_progress: StudentQuest) -> float:
+        """Calculate completion percentage for a quest"""
+        quest = self.quests.get(quest_progress.quest_id)
+        if not quest or not quest.requirements:
+            return 0.0
+        
+        total_progress = 0
+        for req_key, req_value in quest.requirements.items():
+            current_value = quest_progress.progress.get(req_key, 0)
+            req_progress = min(current_value / req_value, 1.0) * 100
+            total_progress += req_progress
+        
+        return total_progress / len(quest.requirements)
 
 class GamificationStorage:
     """Handles all gamification data storage operations"""
@@ -992,7 +1236,15 @@ openai.api_key = OPENAI_API_KEY
 students_db = {}
 conversations_db = {}
 progress_db = {}
-student_contexts = {}  # Store AI conversation context for each student
+student_contexts = {}
+student_levels_db = {}
+student_badges_db = {}
+student_streaks_db = {}
+student_quests_db = {}
+student_stats_db = {}
+
+# Initialize gamification engine
+gamification_engine = GamificationEngine()
 
 class BookGenerator:
     def __init__(self, student: Student):
@@ -1298,6 +1550,8 @@ async def generate_ai_response(message: str, student: Student, conversation_hist
     
     ai_tutor = student_contexts[student.id]
     return await ai_tutor.get_response(message, conversation_history, tutor_type)
+
+
 
 # API Endpoints
 @app.post("/api/students")
