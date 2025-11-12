@@ -39,14 +39,17 @@ cryptography==41.0.7
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 
-# CORS and middleware
-python-cors==1.7.0
-
 # Optional: For production deployment
 gunicorn==21.2.0
 
 # Optional: For caching (useful for leaderboards and stats)
 redis==5.0.1
+
+# Speech Recognition
+SpeechRecognition==3.10.0
+sounddevice==0.4.6
+numpy==1.24.3
+scipy==1.10.1
 
 # Optional: For file handling
 aiofiles==23.2.1

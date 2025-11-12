@@ -1,24 +1,47 @@
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Depends, Security
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel
 from typing import List, Dict, Optional
 import json
 import uuid
-from datetime import datetime
-import asyncio
-from typing import List, Dict, Optional
 from datetime import datetime, timedelta
 from enum import Enum
-import json
-from contextlib import asynccontextmanager
-
-# You'll need to install: pip install fastapi uvicorn openai python-multipart
-import openai
 import os
+import openai
+from pathlib import Path
+import logging
+from contextlib import asynccontextmanager
+from sqlalchemy.orm import Session
+from dotenv import load_dotenv
+
+# Import our models and database
+from models.auth import UserAuth, UserCreate, UserInDB, Token, TokenData
+from models.reading import Chapter, ReadingSession
+from models.schema import Base, User
+from database import engine, get_db
+from utils import format_xp_display, get_difficulty_color, create_achievement_notification
+from gamification import XPCalculator, QuestGenerator, get_student_rank
+
+# Load environment variables
+load_dotenv()
+
+# Set up OpenAI API key
+openai.api_key = os.getenv("OPENAI_API_KEY")
+
+# Create database tables
+Base.metadata.create_all(bind=engine)
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Load environment variables
+from dotenv import load_dotenv
+load_dotenv()
 
 app = FastAPI(
-    title="Peregrine AI Tutor Platform",
-    lifespan=lifespan
+    title="Peregrine AI Tutor Platform"
 )
 
 # Enable CORS for frontend connection
@@ -27,8 +50,80 @@ app.add_middleware(
     allow_origins=["*"],  # In production, specify your frontend domain
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"],
+    allow_headers=["*"]
 )
+
+# --- Authentication helpers (JWT + password hashing) -----------------
+from passlib.context import CryptContext
+from jose import JWTError, jwt
+from models.auth import UserAuth, UserCreate, Token
+
+# Password hashing
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+SECRET_KEY = os.getenv("SECRET_KEY", "change_this_secret")
+ALGORITHM = os.getenv("ALGORITHM", "HS256")
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    return pwd_context.verify(plain_password, hashed_password)
+
+def get_password_hash(password: str) -> str:
+    return pwd_context.hash(password)
+
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else:
+        expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+@app.post("/api/auth/register")
+def register(user: UserCreate, db: Session = Depends(get_db)):
+    """Register a new user. Returns basic confirmation."""
+    # check if email already exists
+    existing = db.query(User).filter(User.email == user.email).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Email already registered")
+
+    user_id = str(uuid.uuid4())
+    hashed_pw = get_password_hash(user.password)
+    db_user = User(
+        id=user_id,
+        email=user.email,
+        name=user.name,
+        hashed_password=hashed_pw,
+        grade_level=user.grade_level
+    )
+    db.add(db_user)
+    db.commit()
+    db.refresh(db_user)
+
+    return {"message": "User created successfully", "user_id": user_id}
+
+@app.post("/api/auth/login", response_model=Token)
+def login(creds: UserAuth, db: Session = Depends(get_db)):
+    """Authenticate user and return JWT access token."""
+    user = db.query(User).filter(User.email == creds.email).first()
+    if not user:
+        raise HTTPException(status_code=400, detail="Incorrect email or password")
+
+    if not verify_password(creds.password, user.hashed_password):
+        raise HTTPException(status_code=400, detail="Incorrect email or password")
+
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    token = create_access_token({"sub": user.email, "user_id": user.id}, expires_delta=access_token_expires)
+
+    return {"access_token": token, "token_type": "bearer", "user_id": user.id, "email": user.email}
+
+
+# Test endpoint to verify connectivity
+@app.get("/api/test")
+def test_connection():
+    return {"status": "ok", "message": "Backend is running"}
 
 # Data Models
 class Student(BaseModel):
