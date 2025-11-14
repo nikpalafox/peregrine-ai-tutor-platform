@@ -102,13 +102,24 @@
     </style>
 </head>
 <body>
+    <!-- Error Toast -->
+    <div id="errorToast" class="fixed top-4 right-4 bg-red-500 text-white px-6 py-3 rounded-lg shadow-lg transform transition-all duration-300 scale-0 z-50"></div>
+    
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="fixed inset-0 bg-gray-900 bg-opacity-50 hidden flex items-center justify-center z-50">
+        <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-white"></div>
+    </div>
+
     <div class="dashboard">
         <div class="sidebar">
             <div class="mb-6">
-                <h2 class="text-2xl font-bold mb-2">Welcome Back!</h2>
+                <h2 class="text-2xl font-bold mb-2">Welcome Back, <span id="userName">User</span>!</h2>
+                <p class="text-sm text-gray-600 mb-2" id="userEmail">user@example.com</p>
+                <p class="text-sm text-gray-600 mb-2">Grade: <span id="userGrade">-</span></p>
                 <div class="level-badge">
                     <span>Level 1</span>
                 </div>
+                <button id="logoutBtn" class="mt-4 text-red-600 hover:text-red-700 underline">Logout</button>
             </div>
 
             <div class="stats-grid">
@@ -136,6 +147,10 @@
                 <button id="generateChapterBtn" class="btn-primary">Generate New Chapter</button>
             </div>
 
+            <div id="readingList" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-6">
+                <!-- Books will be added dynamically -->
+            </div>
+            
             <div id="chapters-container" class="space-y-4">
                 <!-- Chapters will be added dynamically -->
             </div>

@@ -94,5 +94,11 @@ function handleLogout() {
 
 // Initialize on load
 document.addEventListener('DOMContentLoaded', () => {
+    // If user is already logged in, redirect to dashboard
+    const token = localStorage.getItem('authToken');
+    if (token) {
+        window.location.href = 'dashboard.html';
+        return;
+    }
     showLogin();
 });
