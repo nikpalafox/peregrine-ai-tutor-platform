@@ -18,6 +18,8 @@ class UserInDB(UserCreate):
 class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"
+    user_id: Optional[str] = None
+    email: Optional[str] = None
 
 class TokenData(BaseModel):
     email: Optional[str] = None

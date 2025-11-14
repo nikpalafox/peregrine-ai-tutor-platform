@@ -93,12 +93,115 @@ function handleLogout() {
 }
 
 // Initialize on load
+let authInitDone = false;
+
+// Track redirect attempts to detect loops
+const REDIRECT_HISTORY_KEY = 'redirectHistory';
+const MAX_REDIRECTS = 3;
+const REDIRECT_WINDOW = 2000; // 2 seconds
+
+function checkRedirectLoop() {
+    const history = JSON.parse(sessionStorage.getItem(REDIRECT_HISTORY_KEY) || '[]');
+    const now = Date.now();
+    // Remove old entries
+    const recent = history.filter(timestamp => now - timestamp < REDIRECT_WINDOW);
+    
+    if (recent.length >= MAX_REDIRECTS) {
+        // Too many redirects - clear everything and stop
+        console.warn('Redirect loop detected! Clearing auth data.');
+        localStorage.clear();
+        sessionStorage.clear();
+        return true;
+    }
+    
+    // Add current timestamp
+    recent.push(now);
+    sessionStorage.setItem(REDIRECT_HISTORY_KEY, JSON.stringify(recent));
+    return false;
+}
+
 document.addEventListener('DOMContentLoaded', () => {
-    // If user is already logged in, redirect to dashboard
-    const token = localStorage.getItem('authToken');
-    if (token) {
-        window.location.href = 'dashboard.html';
+    // Only run once
+    if (authInitDone) {
         return;
     }
+    authInitDone = true;
+    
+    // Check for redirect loop
+    if (checkRedirectLoop()) {
+        showLogin();
+        return;
+    }
+    
+    // Prevent redirect loops - check if we're already redirecting
+    if (sessionStorage.getItem('redirecting')) {
+        sessionStorage.removeItem('redirecting');
+        // Don't redirect again - just show login
+        showLogin();
+        return;
+    }
+    
+    // Check if we're on the login page (index.html) - be very explicit
+    const currentPath = window.location.pathname;
+    const isLoginPage = currentPath.includes('index.html') || 
+                       (currentPath.endsWith('/') && !currentPath.includes('dashboard') && !currentPath.includes('reading')) ||
+                       (currentPath === '/' || currentPath.endsWith('/index.html'));
+    
+    // Only check for redirect if we're actually on the login page
+    if (isLoginPage) {
+        // Check if we just redirected here (prevent immediate re-redirect)
+        if (sessionStorage.getItem('redirecting')) {
+            // We just redirected here, clear the flag and show login
+            sessionStorage.removeItem('redirecting');
+            showLogin();
+            return;
+        }
+        
+        const token = localStorage.getItem('authToken');
+        
+        // Only redirect if we have a valid token
+        // Don't require userId/email - those might not be set yet
+        if (token) {
+            // Check if token is actually valid by making a quick test
+            // But to avoid loops, just check if we have the minimum required
+            const userId = localStorage.getItem('userId');
+            const email = localStorage.getItem('userEmail');
+            
+            // Only redirect if we have token AND at least one other piece of info
+            // This prevents redirect loops when token exists but data is incomplete
+            if (userId || email) {
+                // Check for redirect loop before redirecting
+                if (checkRedirectLoop()) {
+                    // Loop detected, don't redirect - just show login
+                    showLogin();
+                    return;
+                }
+                
+                // Double-check we're still on login page before redirecting
+                const stillOnLogin = window.location.pathname.includes('index.html') || 
+                                    window.location.pathname.endsWith('/');
+                if (stillOnLogin) {
+                    // Set redirect flag and redirect
+                    sessionStorage.setItem('redirecting', 'true');
+                    // Use a small delay to ensure page is ready
+                    setTimeout(() => {
+                        // Triple-check we're still on login page
+                        const finalCheck = window.location.pathname.includes('index.html') || 
+                                         window.location.pathname.endsWith('/');
+                        if (finalCheck) {
+                            window.location.href = 'dashboard.html';
+                        } else {
+                            sessionStorage.removeItem('redirecting');
+                        }
+                    }, 150);
+                    return;
+                }
+            } else {
+                // Token exists but no user data - might be invalid, clear it
+                localStorage.removeItem('authToken');
+            }
+        }
+    }
+    
     showLogin();
 });
