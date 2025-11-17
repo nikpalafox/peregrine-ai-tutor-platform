@@ -133,6 +133,36 @@
             visibility: visible;
             transform: translateY(0) scale(1);
         }
+
+        /* Reading Agent styles */
+        #readingAgentPanel {
+            transition: all 0.3s ease;
+        }
+
+        #readingAgentPanel.animate-pulse {
+            animation: pulse 0.5s ease-in-out;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.8; }
+        }
+
+        /* Word highlighting styles */
+        .text-green-600 {
+            color: #059669;
+        }
+
+        .text-red-600 {
+            color: #dc2626;
+            text-decoration: underline;
+        }
+
+        .bg-yellow-200 {
+            background-color: #fef08a;
+            padding: 2px 4px;
+            border-radius: 3px;
+        }
     </style>
 </head>
 <body>

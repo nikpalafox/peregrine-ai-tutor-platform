@@ -1804,6 +1804,177 @@ async def get_student_books(student_id: str):
     
     return progress_db.get(student_id, {}).get("generated_books", [])
 
+# Reading Agent endpoints
+class ReadingFeedbackRequest(BaseModel):
+    expected_text: str  # The text the student should be reading
+    spoken_text: str    # What the student actually said
+    student_id: str
+    current_word_index: int = 0  # Where they are in the text
+    struggle_indicators: Optional[Dict] = None  # pauses, repetitions, etc.
+
+class ReadingContentRequest(BaseModel):
+    book_id: str
+
+@app.get("/api/reading/content/{book_id}")
+async def get_reading_content(book_id: str):
+    """Get reading content for a book/chapter"""
+    # Try to find the book in all students' generated books
+    for student_id, student_data in progress_db.items():
+        books = student_data.get("generated_books", [])
+        for book in books:
+            if book.get("id") == book_id:
+                # Split content into pages (by paragraphs or sentences)
+                content = book.get("content", "")
+                pages = []
+                if content:
+                    # Split by double newlines first (paragraphs)
+                    paragraphs = [p.strip() for p in content.split("\n\n") if p.strip()]
+                    for para in paragraphs:
+                        # If paragraph is long, split by sentences
+                        sentences = para.split('. ')
+                        current_page = ""
+                        for sentence in sentences:
+                            if len(current_page) + len(sentence) < 500:  # ~500 chars per page
+                                current_page += sentence + ". "
+                            else:
+                                if current_page:
+                                    pages.append({"text": current_page.strip()})
+                                current_page = sentence + ". "
+                        if current_page:
+                            pages.append({"text": current_page.strip()})
+                else:
+                    pages = [{"text": "No content available"}]
+                
+                return {
+                    "book_id": book_id,
+                    "title": book.get("title", "Reading"),
+                    "pages": pages
+                }
+    
+    raise HTTPException(status_code=404, detail="Book not found")
+
+@app.post("/api/reading/feedback")
+async def get_reading_feedback(request: ReadingFeedbackRequest):
+    """Get AI-powered reading feedback like a teacher would give"""
+    try:
+        # Get student info
+        if request.student_id not in students_db:
+            raise HTTPException(status_code=404, detail="Student not found")
+        
+        student = Student(**students_db[request.student_id])
+        
+        # Prepare context for AI reading tutor
+        expected_words = request.expected_text.lower().split()
+        spoken_words = request.spoken_text.lower().split()
+        
+        # Find mismatches and struggles
+        word_matches = []
+        incorrect_words = []
+        for i, expected_word in enumerate(expected_words[:len(spoken_words)]):
+            spoken_word = spoken_words[i] if i < len(spoken_words) else ""
+            # Simple comparison (remove punctuation)
+            expected_clean = ''.join(c for c in expected_word if c.isalnum())
+            spoken_clean = ''.join(c for c in spoken_word if c.isalnum())
+            
+            if expected_clean == spoken_clean:
+                word_matches.append((expected_word, True))
+            else:
+                word_matches.append((expected_word, False))
+                incorrect_words.append({
+                    "expected": expected_word,
+                    "spoken": spoken_word,
+                    "position": i
+                })
+        
+        # Detect struggles
+        struggles = []
+        if request.struggle_indicators:
+            if request.struggle_indicators.get("long_pause", False):
+                struggles.append("long pause")
+            if request.struggle_indicators.get("repetition", False):
+                struggles.append("repeated words")
+            if request.struggle_indicators.get("hesitation", False):
+                struggles.append("hesitation")
+        
+        # Create prompt for AI reading tutor
+        prompt = f"""You are a patient and encouraging reading teacher helping a {student.grade_level}th grade student read aloud.
+
+The student is reading this text:
+"{request.expected_text}"
+
+They just read: "{request.spoken_text}"
+
+{'They struggled with: ' + ', '.join(struggles) if struggles else ''}
+
+Current position: word {request.current_word_index} of {len(expected_words)}
+
+Incorrect words detected: {len(incorrect_words)}
+{('Incorrect words: ' + str(incorrect_words[:3])) if incorrect_words else 'All words correct so far!'}
+
+Please provide:
+1. Encouraging feedback (2-3 sentences)
+2. If they made mistakes, gently point out the word(s) and help them sound it out
+3. If they're struggling, offer a helpful tip
+4. Praise what they did well
+
+Be warm, patient, and supportive like a caring teacher. Keep it brief (3-4 sentences max)."""
+
+        # Use OpenAI to generate feedback
+        try:
+            from openai import OpenAI
+            client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+            
+            response = client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "system", "content": "You are a patient, encouraging reading teacher who helps students learn to read with kindness and support."},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=200,
+                temperature=0.7
+            )
+            
+            feedback = response.choices[0].message.content
+        except Exception as api_err:
+            logger.error(f"OpenAI API error in reading feedback: {api_err}")
+            # Fallback feedback
+            feedback = "Keep reading! You're doing great. Take your time with each word and sound it out if you need help."
+        
+        # Calculate accuracy
+        correct = sum(1 for _, match in word_matches if match)
+        total = len(word_matches) if word_matches else 1
+        accuracy = int((correct / total) * 100) if total > 0 else 0
+        
+        return {
+            "feedback": feedback,
+            "accuracy": accuracy,
+            "incorrect_words": incorrect_words[:5],  # Limit to first 5
+            "needs_help": len(incorrect_words) > 0 or len(struggles) > 0,
+            "encouragement": "Great job!" if accuracy > 80 else "Keep trying!" if accuracy > 50 else "Let's practice this together!"
+        }
+        
+    except Exception as e:
+        logger.error(f"Reading feedback error: {e}")
+        # Fallback feedback
+        return {
+            "feedback": "Keep reading! You're doing great. Take your time with each word.",
+            "accuracy": 0,
+            "incorrect_words": [],
+            "needs_help": False,
+            "encouragement": "You can do it!"
+        }
+
+@app.post("/api/reading/finish/{book_id}")
+async def finish_reading_session(book_id: str, data: dict):
+    """Save reading session results"""
+    # Store reading session data
+    # This could be saved to database in the future
+    return {
+        "message": "Reading session saved",
+        "book_id": book_id,
+        "results": data
+    }
+
 def extract_topics(message: str) -> List[str]:
     """Simple topic extraction from student messages"""
     topic_keywords = {
