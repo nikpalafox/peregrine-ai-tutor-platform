@@ -1439,24 +1439,33 @@ The chapter should be engaging, educational, and perfectly tailored to this stud
                 title = lines[0].replace("Title:", "").replace("Chapter", "Chapter").strip()
                 chapter_text = '\n'.join(lines[1:]).strip()
             
+            # Generate unique ID for the chapter
+            chapter_id = str(uuid.uuid4())
+            
             return {
+                "id": chapter_id,
                 "title": title,
                 "content": chapter_text,
                 "chapter_number": chapter_number,
                 "topic": topic,
                 "word_count": len(chapter_text.split()),
-                "reading_time_minutes": max(1, len(chapter_text.split()) // 200)
+                "reading_time_minutes": max(1, len(chapter_text.split()) // 200),
+                "description": chapter_text[:200] + "..." if len(chapter_text) > 200 else chapter_text
             }
             
         except Exception as e:
             print(f"Book generation error: {e}")
+            chapter_id = str(uuid.uuid4())
+            error_content = f"This would be an amazing story about {topic} featuring {interests_str}! The book generator is having trouble right now, but imagine the exciting adventures we could create together!"
             return {
+                "id": chapter_id,
                 "title": f"Chapter {chapter_number}: Adventure Awaits",
-                "content": f"This would be an amazing story about {topic} featuring {interests_str}! The book generator is having trouble right now, but imagine the exciting adventures we could create together!",
+                "content": error_content,
                 "chapter_number": chapter_number,
                 "topic": topic,
                 "word_count": 50,
-                "reading_time_minutes": 1
+                "reading_time_minutes": 1,
+                "description": error_content[:200] + "..." if len(error_content) > 200 else error_content
             }
 
 # Specialized AI Tutors
@@ -1692,20 +1701,52 @@ async def create_student(student: Student):
     }
     return {"message": "Student created successfully", "student_id": student.id}
 
+def get_or_create_student(student_id: str, db: Session):
+    """Get or create student in students_db from User database"""
+    if student_id in students_db:
+        return students_db[student_id]
+    
+    # Try to get from User database
+    user = db.query(User).filter(User.id == student_id).first()
+    if user:
+        # Create student record from User
+        student_data = {
+            "id": user.id,
+            "name": user.name,
+            "grade_level": user.grade_level,
+            "interests": [],  # Default empty, can be updated later
+            "learning_style": "general"  # Default learning style
+        }
+        students_db[student_id] = student_data
+        if student_id not in conversations_db:
+            conversations_db[student_id] = []
+        if student_id not in progress_db:
+            progress_db[student_id] = {
+                "total_messages": 0,
+                "topics_covered": [],
+                "last_active": datetime.now().isoformat(),
+                "generated_books": []
+            }
+        return student_data
+    
+    return None
+
 @app.get("/api/students/{student_id}")
-async def get_student(student_id: str):
+async def get_student(student_id: str, db: Session = Depends(get_db)):
     """Get student profile"""
-    if student_id not in students_db:
+    student = get_or_create_student(student_id, db)
+    if not student:
         raise HTTPException(status_code=404, detail="Student not found")
-    return students_db[student_id]
+    return student
 
 @app.post("/api/chat")
-async def chat_with_tutor(message: ChatMessage):  # Note: ChatMessage instead of Message
+async def chat_with_tutor(message: ChatMessage, db: Session = Depends(get_db)):  # Note: ChatMessage instead of Message
     """Enhanced chat endpoint with gamification tracking"""
-    if message.student_id not in students_db:
+    student_data = get_or_create_student(message.student_id, db)
+    if not student_data:
         raise HTTPException(status_code=404, detail="Student not found")
     
-    student = Student(**students_db[message.student_id])
+    student = Student(**student_data)
     
     # Get conversation history for context
     conversation_history = conversations_db.get(message.student_id, [])
@@ -1756,12 +1797,13 @@ async def chat_with_tutor(message: ChatMessage):  # Note: ChatMessage instead of
     }
 
 @app.post("/api/generate-chapter")
-async def generate_chapter(request: BookRequest):
+async def generate_chapter(request: BookRequest, db: Session = Depends(get_db)):
     """Generate a custom chapter for the student with gamification"""
-    if request.student_id not in students_db:
+    student_data = get_or_create_student(request.student_id, db)
+    if not student_data:
         raise HTTPException(status_code=404, detail="Student not found")
     
-    student = Student(**students_db[request.student_id])
+    student = Student(**student_data)
     
     if request.student_id not in student_contexts:
         student_contexts[request.student_id] = AITutor(student)
@@ -1797,9 +1839,10 @@ async def generate_chapter(request: BookRequest):
     }
 
 @app.get("/api/students/{student_id}/books")
-async def get_student_books(student_id: str):
+async def get_student_books(student_id: str, db: Session = Depends(get_db)):
     """Get all books/chapters generated for a student"""
-    if student_id not in students_db:
+    student = get_or_create_student(student_id, db)
+    if not student:
         raise HTTPException(status_code=404, detail="Student not found")
     
     return progress_db.get(student_id, {}).get("generated_books", [])
@@ -1854,14 +1897,15 @@ async def get_reading_content(book_id: str):
     raise HTTPException(status_code=404, detail="Book not found")
 
 @app.post("/api/reading/feedback")
-async def get_reading_feedback(request: ReadingFeedbackRequest):
+async def get_reading_feedback(request: ReadingFeedbackRequest, db: Session = Depends(get_db)):
     """Get AI-powered reading feedback like a teacher would give"""
     try:
         # Get student info
-        if request.student_id not in students_db:
+        student_data = get_or_create_student(request.student_id, db)
+        if not student_data:
             raise HTTPException(status_code=404, detail="Student not found")
         
-        student = Student(**students_db[request.student_id])
+        student = Student(**student_data)
         
         # Prepare context for AI reading tutor
         expected_words = request.expected_text.lower().split()

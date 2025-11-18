@@ -145,20 +145,31 @@ async function loadStudentBooks(userId) {
 
 function displayReadingList(books) {
     const container = document.getElementById('readingList');
-    if (!container) return;
+    if (!container) {
+        console.warn('readingList container not found');
+        return;
+    }
+    
     container.innerHTML = '';
 
     if (!books || books.length === 0) {
-        container.innerHTML = '<p class="text-gray-500 col-span-full text-center">No books available.</p>';
+        container.innerHTML = '<p class="text-gray-500 col-span-full text-center py-8">No books available. Click "Generate New Chapter" to create one!</p>';
         return;
     }
 
     books.forEach(book => {
         const card = document.createElement('div');
-        card.className = 'card p-6';
+        card.className = 'bg-white p-6 rounded-lg shadow-md';
+        
+        // Handle different possible book/chapter formats
+        const title = book.title || book.topic || 'Untitled Chapter';
+        const description = book.description || 
+                          (book.content ? book.content.substring(0, 150) + '...' : '') ||
+                          'A custom reading chapter for you!';
+        
         card.innerHTML = `
-            <h4 class="text-lg font-semibold mb-2">${book.title}</h4>
-            <p class="text-gray-600 text-sm mb-4">${book.description || ''}</p>
+            <h4 class="text-lg font-semibold mb-2">${title}</h4>
+            <p class="text-gray-600 text-sm mb-4">${description}</p>
             <button data-book-id="${book.id}" class="start-reading bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors w-full">
                 Start Reading
             </button>
@@ -169,7 +180,13 @@ function displayReadingList(books) {
     container.querySelectorAll('.start-reading').forEach(btn => {
         btn.addEventListener('click', (e) => {
             const bookId = e.currentTarget.getAttribute('data-book-id');
-            if (bookId) window.location.href = `reading.html?id=${bookId}`;
+            console.log('Start reading clicked, bookId:', bookId); // Debug log
+            if (bookId) {
+                window.location.href = `reading.html?id=${bookId}`;
+            } else {
+                console.error('Button missing data-book-id attribute');
+                showError('Book ID not found. Please try again.');
+            }
         });
     });
 }
@@ -201,29 +218,84 @@ async function setupChapterGeneration(userId) {
             });
             hideLoading();
 
+            console.log('Generated chapter:', chapter); // Debug log
+            
             if (chapter && chapter.id) {
-                // Add new chapter to the list
+                // Refresh the books list first to ensure the new chapter appears
+                await loadStudentBooks(userId);
+                
+                // Also add to chapters container for immediate visual feedback
                 displayChapter(chapter);
+                
+                // Show success message
+                const toast = document.getElementById('errorToast');
+                if (toast) {
+                    const originalText = toast.textContent;
+                    toast.textContent = '✓ Chapter generated successfully!';
+                    toast.className = toast.className.replace('bg-red-500', 'bg-green-500');
+                    toast.classList.add('visible');
+                    setTimeout(() => {
+                        toast.classList.remove('visible');
+                        toast.className = toast.className.replace('bg-green-500', 'bg-red-500');
+                        toast.textContent = originalText;
+                    }, 3000);
+                }
+            } else {
+                console.error('Chapter missing id:', chapter);
+                showError('Chapter generated but missing ID');
             }
         } catch (err) {
             console.error('Failed to generate chapter', err);
-            showError('Failed to generate chapter');
+            showError(err.message || 'Failed to generate chapter');
             hideLoading();
         }
     });
 }
 
 function displayChapter(chapter) {
-    const container = document.getElementById('chapters-container');
-    if (!container) return;
+    // Try chapters-container first (for older generated chapters display)
+    let container = document.getElementById('chapters-container');
+    
+    // If not found, try readingList (for books display)
+    if (!container) {
+        container = document.getElementById('readingList');
+    }
+    
+    if (!container) {
+        console.error('No container found for displaying chapter');
+        // Create container if it doesn't exist
+        const mainContent = document.querySelector('.main-content');
+        if (mainContent) {
+            container = document.createElement('div');
+            container.id = 'chapters-container';
+            container.className = 'space-y-4 mt-6';
+            mainContent.appendChild(container);
+        } else {
+            console.error('Cannot create container - main-content not found');
+            return;
+        }
+    }
+
+    // Check if this chapter already exists to avoid duplicates
+    const existingCard = container.querySelector(`[data-chapter-id="${chapter.id}"]`);
+    if (existingCard) {
+        console.log('Chapter already displayed:', chapter.id);
+        return;
+    }
 
     const card = document.createElement('div');
-    card.className = 'chapter-card';
+    card.className = 'chapter-card bg-white p-6 rounded-lg shadow-md mb-4';
+    card.setAttribute('data-chapter-id', chapter.id);
+    
+    // Determine title - check various possible fields
+    const title = chapter.title || chapter.topic || 'New Chapter';
+    const description = chapter.description || chapter.content?.substring(0, 100) + '...' || 'A custom chapter just for you!';
+    
     card.innerHTML = `
         <div class="flex justify-between items-start mb-4">
-            <div>
-                <h3 class="text-xl font-semibold mb-2">${chapter.title || chapter.topic}</h3>
-                <p class="text-gray-600">${chapter.description || 'A custom chapter just for you!'}</p>
+            <div class="flex-1">
+                <h3 class="text-xl font-semibold mb-2">${title}</h3>
+                <p class="text-gray-600 text-sm">${description}</p>
             </div>
             <span class="level-badge">New</span>
         </div>
@@ -237,13 +309,25 @@ function displayChapter(chapter) {
     `;
 
     // Add to top of list
-    container.insertBefore(card, container.firstChild);
+    if (container.firstChild) {
+        container.insertBefore(card, container.firstChild);
+    } else {
+        container.appendChild(card);
+    }
 
     // Wire up the start reading button
-    const btn = card.querySelector('button');
-    btn.addEventListener('click', () => {
-        window.location.href = `reading.html?id=${chapter.id}`;
-    });
+    const btn = card.querySelector('button[data-chapter-id]');
+    if (btn) {
+        btn.addEventListener('click', () => {
+            console.log('Chapter start reading clicked, chapter.id:', chapter.id); // Debug log
+            if (chapter.id) {
+                window.location.href = `reading.html?id=${chapter.id}`;
+            } else {
+                console.error('Chapter missing ID:', chapter);
+                showError('Chapter ID not found. Please try again.');
+            }
+        });
+    }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
