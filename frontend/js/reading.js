@@ -511,9 +511,21 @@ function getQueryParam(name) {
 
 document.addEventListener('DOMContentLoaded', async () => {
     const bookId = getQueryParam('id');
+    console.log('Reading page loaded with bookId:', bookId); // Debug log
+    
     const token = localStorage.getItem('authToken');
     if (!token) {
         window.location.href = 'index.html';
+        return;
+    }
+
+    if (!bookId) {
+        showError('No book ID provided in URL');
+        console.error('Missing book ID in URL. URL:', window.location.href);
+        // Redirect back to dashboard after 2 seconds
+        setTimeout(() => {
+            window.location.href = 'dashboard.html';
+        }, 2000);
         return;
     }
 
