@@ -19,6 +19,10 @@ class ReadingSession {
         this.lastFeedbackTime = 0;
         this.feedbackCooldown = 3000; // 3 seconds between feedback requests
         this.currentTranscript = ''; // Track ongoing transcript
+        this.lastFeedbackCount = 0; // Track word count at last feedback
+        this.lastUpdateTime = 0; // Track last UI update time
+        this.updateDebounceDelay = 200; // Debounce UI updates to 200ms
+        this.lastSpokenWordsCount = 0; // Track last spoken words count to avoid unnecessary updates
     }
 
     setupSpeechRecognition() {
@@ -42,28 +46,94 @@ class ReadingSession {
                 const transcript = event.results[i][0].transcript;
                 if (event.results[i].isFinal) {
                     finalTranscript += transcript + ' ';
+                    // Add final words to spokenWords array
                     const transcriptLower = transcript.trim().toLowerCase();
-                    this.spokenWords.push(...transcriptLower.split(/\s+/));
+                    const newWords = transcriptLower.split(/\s+/).filter(w => w.length > 0);
+                    if (newWords.length > 0) {
+                        this.spokenWords.push(...newWords);
+                        this.lastSpokenText += transcript + ' ';
+                    }
                 } else {
                     interimTranscript += transcript;
                 }
             }
             
-            // Update current transcript for display
+            // Update current transcript for display (includes both final and interim)
             this.currentTranscript = this.lastSpokenText + finalTranscript + interimTranscript;
             
-            // Update display
-            this.updateAccuracyDisplay();
-            this.updateTranscriptDisplay();
+            // Process interim results to extract words incrementally
+            // This allows real-time word tracking as students speak, not just after pauses
+            if (interimTranscript.trim() || finalTranscript.trim()) {
+                const fullTranscript = this.currentTranscript.toLowerCase();
+                const allWords = fullTranscript.split(/\s+/).filter(w => w.length > 0);
+                const expectedWords = this.expectedWords || [];
+                
+                // Match words from the full transcript to expected words in sequence
+                // This gives us real-time progress tracking
+                const matchedWords = [];
+                let transcriptIndex = 0;
+                
+                for (let expectedIndex = 0; expectedIndex < expectedWords.length && transcriptIndex < allWords.length; expectedIndex++) {
+                    const expectedWord = expectedWords[expectedIndex].replace(/[^a-z0-9]/g, '');
+                    
+                    // Look for a match in the remaining transcript
+                    let found = false;
+                    for (let i = transcriptIndex; i < allWords.length; i++) {
+                        const spokenWord = allWords[i].replace(/[^a-z0-9]/g, '');
+                        
+                        // Check for exact match or close match (for interim results)
+                        if (spokenWord === expectedWord || 
+                            (spokenWord.length >= 2 && expectedWord.startsWith(spokenWord.substring(0, Math.min(spokenWord.length, expectedWord.length)))) ||
+                            (expectedWord.length >= 2 && spokenWord.startsWith(expectedWord.substring(0, Math.min(expectedWord.length, spokenWord.length))))) {
+                            matchedWords.push(allWords[i]);
+                            transcriptIndex = i + 1;
+                            found = true;
+                            break;
+                        }
+                    }
+                    
+                    // If no match found, stop tracking (student may have skipped or misread)
+                    if (!found) {
+                        break;
+                    }
+                }
+                
+                // Update spokenWords with matched words for real-time display
+                if (matchedWords.length > 0) {
+                    this.spokenWords = matchedWords;
+                }
+            }
             
-            // Get feedback when we have final results and enough time has passed
-            if (finalTranscript.trim() && (Date.now() - this.lastFeedbackTime) > this.feedbackCooldown) {
-                this.lastSpokenText += finalTranscript;
+            // Update display in real-time as words are detected
+            // But debounce to avoid excessive re-renders
+            const now = Date.now();
+            const shouldUpdate = now - this.lastUpdateTime > this.updateDebounceDelay ||
+                                this.spokenWords.length !== this.lastSpokenWordsCount;
+            
+            if (shouldUpdate) {
+                this.updateAccuracyDisplay();
+                this.updateTranscriptDisplay();
+                this.updateWordHighlighting();
+                this.lastUpdateTime = now;
+                this.lastSpokenWordsCount = this.spokenWords.length;
+            }
+            
+            // Get feedback more frequently - on final results OR when we detect significant progress
+            const shouldGetFeedback = finalTranscript.trim() && 
+                (Date.now() - this.lastFeedbackTime) > this.feedbackCooldown;
+            
+            // Also get feedback when we've spoken a few words (every 3-5 words)
+            const wordsSinceLastFeedback = this.spokenWords.length - (this.lastFeedbackCount || 0);
+            const shouldGetIncrementalFeedback = wordsSinceLastFeedback >= 3 && 
+                (Date.now() - this.lastFeedbackTime) > 1500; // Shorter cooldown for incremental feedback
+            
+            if (shouldGetFeedback || shouldGetIncrementalFeedback) {
+                this.lastFeedbackCount = this.spokenWords.length;
                 this.getReadingFeedback();
             }
             
             // Detect pauses (no speech for a while)
-            if (interimTranscript.trim() === '' && this.isListening) {
+            if (interimTranscript.trim() === '' && finalTranscript.trim() === '' && this.isListening) {
                 if (!this.pauseStartTime) {
                     this.pauseStartTime = Date.now();
                 } else if (Date.now() - this.pauseStartTime > 3000) {
@@ -77,9 +147,34 @@ class ReadingSession {
 
         this.recognition.onerror = (event) => {
             console.error('Speech recognition error:', event.error);
-            try {
-                this.stopListening();
-            } catch (e) {}
+            // Don't auto-restart on certain errors to prevent refresh loops
+            if (event.error === 'no-speech' || event.error === 'aborted') {
+                // These are normal - don't do anything
+                return;
+            }
+            // Only stop on serious errors
+            if (event.error === 'network' || event.error === 'not-allowed') {
+                try {
+                    this.stopListening();
+                } catch (e) {}
+            }
+        };
+        
+        // Don't auto-restart - with continuous mode, it should keep running
+        // Only restart manually when user clicks the button
+        this.recognition.onend = () => {
+            // With continuous: true, onend should only fire on errors
+            // Don't auto-restart to prevent refresh loops
+            if (this.isListening) {
+                console.log('Speech recognition ended unexpectedly');
+                // Update UI to show it stopped
+                const toggleBtn = document.querySelector('#toggleSpeech');
+                if (toggleBtn) {
+                    toggleBtn.textContent = '🎤 Start Reading';
+                    toggleBtn.className = 'bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700';
+                }
+                this.isListening = false;
+            }
         };
     }
 
@@ -145,6 +240,9 @@ class ReadingSession {
         this.spokenWords = [];
         this.lastSpokenText = '';
         this.currentTranscript = '';
+        this.lastFeedbackCount = 0;
+        this.lastUpdateTime = 0;
+        this.lastSpokenWordsCount = 0;
 
         // Add Reading Agent feedback panel
         const agentPanel = document.createElement('div');
@@ -228,10 +326,13 @@ class ReadingSession {
         if (!this.studentId || !this.isListening) return;
         
         const now = Date.now();
-        if (now - this.lastFeedbackTime < this.feedbackCooldown) return;
+        // Allow shorter cooldown for incremental feedback
+        const minCooldown = 1500; // 1.5 seconds minimum
+        if (now - this.lastFeedbackTime < minCooldown) return;
         
         const currentPageText = this.pages[this.currentIndex] || '';
-        const spokenText = this.lastSpokenText.trim();
+        // Use the full transcript including interim results for more accurate feedback
+        const spokenText = this.currentTranscript.trim() || this.lastSpokenText.trim();
         
         if (!spokenText) return;
         
@@ -294,8 +395,27 @@ class ReadingSession {
     
     updateTranscriptDisplay() {
         const transcriptEl = document.getElementById('currentTranscript');
-        if (transcriptEl) {
-            transcriptEl.textContent = this.currentTranscript || '(listening...)';
+        if (!transcriptEl) return;
+        
+        // Only update if transcript actually changed to avoid unnecessary DOM updates
+        const newText = this.currentTranscript || '(listening...)';
+        if (transcriptEl.textContent !== newText) {
+            transcriptEl.textContent = newText;
+        }
+    }
+    
+    updateWordHighlighting() {
+        // Update the word highlighting in real-time as words are detected
+        // Only update if there's an actual change to avoid unnecessary re-renders
+        const textEl = document.getElementById('readingText');
+        if (!textEl) return;
+        
+        const pageText = this.pages[this.currentIndex] || '';
+        const newHTML = this.highlightCurrentWord(pageText);
+        
+        // Only update if the content actually changed
+        if (textEl.innerHTML !== newHTML) {
+            textEl.innerHTML = newHTML;
         }
     }
     
@@ -373,7 +493,12 @@ class ReadingSession {
         const accuracy = Math.round((matches / this.expectedWords.length) * 100);
         const accuracyEl = document.getElementById('accuracy');
         if (accuracyEl) {
-            accuracyEl.textContent = `Accuracy: ${accuracy}%`;
+            // Only update if accuracy changed to avoid unnecessary DOM updates
+            const currentText = accuracyEl.textContent;
+            const newText = `Accuracy: ${accuracy}%`;
+            if (currentText !== newText) {
+                accuracyEl.textContent = newText;
+            }
         }
 
         // Store for submission

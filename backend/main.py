@@ -23,11 +23,22 @@ from database import engine, get_db
 from utils import format_xp_display, get_difficulty_color, create_achievement_notification
 from gamification import XPCalculator, QuestGenerator, get_student_rank
 
-# Load environment variables
-load_dotenv()
+# Load environment variables - explicitly look in backend directory
+from pathlib import Path
+backend_dir = Path(__file__).parent
+env_path = backend_dir / '.env'
+load_dotenv(dotenv_path=env_path)
 
 # Set up OpenAI API key
-openai.api_key = os.getenv("OPENAI_API_KEY")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+if not OPENAI_API_KEY:
+    print("WARNING: OPENAI_API_KEY not found in environment variables!")
+    print(f"Looking for .env file at: {env_path}")
+    print("Please create a .env file in the backend directory with: OPENAI_API_KEY=your_key_here")
+else:
+    print(f"✓ OpenAI API key loaded (starts with: {OPENAI_API_KEY[:10]}...)")
+
+openai.api_key = OPENAI_API_KEY
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
@@ -35,10 +46,6 @@ Base.metadata.create_all(bind=engine)
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-# Load environment variables
-from dotenv import load_dotenv
-load_dotenv()
 
 app = FastAPI(
     title="Peregrine AI Tutor Platform"
@@ -1349,14 +1356,8 @@ class GamificationActivityRequest(BaseModel):
     tutor_type: Optional[str] = None
 
 
-# Configuration - Add your API key here or set as environment variable
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "your-openai-api-key-here")
-
-# Debug: Check if API key is loaded
-print(f"API Key loaded: {'Yes' if OPENAI_API_KEY and OPENAI_API_KEY != 'your-openai-api-key-here' else 'No'}")
-print(f"API Key starts with: {OPENAI_API_KEY[:10] if OPENAI_API_KEY else 'None'}...")
-
-openai.api_key = OPENAI_API_KEY
+# Use the OPENAI_API_KEY loaded at the top of the file
+# (Already loaded from .env file above)
 
 # In-memory storage (we'll upgrade to a database later)
 students_db = {}
@@ -1799,44 +1800,63 @@ async def chat_with_tutor(message: ChatMessage, db: Session = Depends(get_db)): 
 @app.post("/api/generate-chapter")
 async def generate_chapter(request: BookRequest, db: Session = Depends(get_db)):
     """Generate a custom chapter for the student with gamification"""
-    student_data = get_or_create_student(request.student_id, db)
-    if not student_data:
-        raise HTTPException(status_code=404, detail="Student not found")
-    
-    student = Student(**student_data)
-    
-    if request.student_id not in student_contexts:
-        student_contexts[request.student_id] = AITutor(student)
-    
-    ai_tutor = student_contexts[request.student_id]
-    chapter = await ai_tutor.book_generator.generate_chapter(
-        request.topic, 
-        request.chapter_number
-    )
-    
-    # Store the generated chapter
-    if "generated_books" not in progress_db[request.student_id]:
-        progress_db[request.student_id]["generated_books"] = []
-    
-    progress_db[request.student_id]["generated_books"].append(chapter)
-    
-    # 🎮 Record gamification activity
-    activity_data = GamificationActivityRequest(
-        student_id=request.student_id,
-        activity_type="book_generated",
-        activity_data={"topic": request.topic}
-    )
-    
     try:
-        gamification_response = await record_activity(activity_data)
+        student_data = get_or_create_student(request.student_id, db)
+        if not student_data:
+            raise HTTPException(status_code=404, detail="Student not found")
+        
+        student = Student(**student_data)
+        
+        # Ensure progress_db entry exists
+        if request.student_id not in progress_db:
+            progress_db[request.student_id] = {
+                "total_messages": 0,
+                "topics_covered": [],
+                "last_active": datetime.now().isoformat(),
+                "generated_books": []
+            }
+        elif "generated_books" not in progress_db[request.student_id]:
+            progress_db[request.student_id]["generated_books"] = []
+        
+        if request.student_id not in student_contexts:
+            student_contexts[request.student_id] = AITutor(student)
+        
+        ai_tutor = student_contexts[request.student_id]
+        
+        print(f"Generating chapter for student {request.student_id}, topic: {request.topic}")
+        chapter = await ai_tutor.book_generator.generate_chapter(
+            request.topic, 
+            request.chapter_number
+        )
+        
+        print(f"Chapter generated: {chapter.get('id', 'NO ID')}, title: {chapter.get('title', 'NO TITLE')}")
+        
+        # Store the generated chapter
+        progress_db[request.student_id]["generated_books"].append(chapter)
+        print(f"Chapter stored. Total books for student: {len(progress_db[request.student_id]['generated_books'])}")
+        
+        # 🎮 Record gamification activity
+        activity_data = GamificationActivityRequest(
+            student_id=request.student_id,
+            activity_type="book_generated",
+            activity_data={"topic": request.topic}
+        )
+        
+        try:
+            gamification_response = await record_activity(activity_data)
+        except Exception as e:
+            print(f"Gamification error: {e}")
+            gamification_response = {"activity_processed": False}
+        
+        return {
+            **chapter,
+            "gamification": gamification_response
+        }
     except Exception as e:
-        print(f"Gamification error: {e}")
-        gamification_response = {"activity_processed": False}
-    
-    return {
-        **chapter,
-        "gamification": gamification_response
-    }
+        print(f"Error generating chapter: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to generate chapter: {str(e)}")
 
 @app.get("/api/students/{student_id}/books")
 async def get_student_books(student_id: str, db: Session = Depends(get_db)):
@@ -1845,7 +1865,20 @@ async def get_student_books(student_id: str, db: Session = Depends(get_db)):
     if not student:
         raise HTTPException(status_code=404, detail="Student not found")
     
-    return progress_db.get(student_id, {}).get("generated_books", [])
+    # Ensure progress_db entry exists with generated_books
+    if student_id not in progress_db:
+        progress_db[student_id] = {
+            "total_messages": 0,
+            "topics_covered": [],
+            "last_active": datetime.now().isoformat(),
+            "generated_books": []
+        }
+    elif "generated_books" not in progress_db[student_id]:
+        progress_db[student_id]["generated_books"] = []
+    
+    books = progress_db[student_id].get("generated_books", [])
+    print(f"Returning {len(books)} books for student {student_id}")
+    return books
 
 # Reading Agent endpoints
 class ReadingFeedbackRequest(BaseModel):

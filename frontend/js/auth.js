@@ -184,16 +184,20 @@ document.addEventListener('DOMContentLoaded', () => {
                     // Set redirect flag and redirect
                     sessionStorage.setItem('redirecting', 'true');
                     // Use a small delay to ensure page is ready
-                    setTimeout(() => {
-                        // Triple-check we're still on login page
-                        const finalCheck = window.location.pathname.includes('index.html') || 
-                                         window.location.pathname.endsWith('/');
-                        if (finalCheck) {
-                            window.location.href = 'dashboard.html';
-                        } else {
-                            sessionStorage.removeItem('redirecting');
-                        }
-                    }, 150);
+                    // Only redirect if we're not already redirecting
+                    if (!sessionStorage.getItem('redirecting')) {
+                        sessionStorage.setItem('redirecting', 'true');
+                        setTimeout(() => {
+                            // Triple-check we're still on login page
+                            const finalCheck = window.location.pathname.includes('index.html') || 
+                                             window.location.pathname.endsWith('/');
+                            if (finalCheck) {
+                                window.location.href = 'dashboard.html';
+                            } else {
+                                sessionStorage.removeItem('redirecting');
+                            }
+                        }, 150);
+                    }
                     return;
                 }
             } else {

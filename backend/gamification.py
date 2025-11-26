@@ -29,8 +29,12 @@ class XPCalculator:
             xp += int(min(wpm / 2, 50))  # Up to 50 bonus XP for reading speed
             xp += int(comprehension * 0.5)  # Up to 50 bonus XP for comprehension
         
+        # Return both `xp_earned` (friendly name) and `total_xp` to
+        # remain compatible with other parts of the code that expect
+        # the `total_xp` key.
         return {
             "xp_earned": xp,
+            "total_xp": xp,
             "activity_type": activity_type,
             "bonuses": activity_data
         }

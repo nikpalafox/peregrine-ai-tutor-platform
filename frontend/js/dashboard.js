@@ -201,24 +201,42 @@ function handleLogout() {
 const logoutBtn = document.getElementById('logoutBtn');
 if (logoutBtn) logoutBtn.addEventListener('click', handleLogout);
 
+// Prevent multiple event listeners
+let chapterGenerationSetup = false;
+
 async function setupChapterGeneration(userId) {
     const generateBtn = document.getElementById('generateChapterBtn');
     if (!generateBtn) return;
+    
+    // Only set up once
+    if (chapterGenerationSetup) {
+        return;
+    }
+    chapterGenerationSetup = true;
 
     generateBtn.addEventListener('click', async () => {
         const topic = prompt('What topic would you like to read about?');
-        if (!topic) return;
+        if (!topic || !topic.trim()) {
+            return;
+        }
 
         try {
             showLoading();
+            generateBtn.disabled = true;
+            generateBtn.textContent = 'Generating...';
+            
+            console.log('Requesting chapter generation for topic:', topic);
             const chapter = await apiRequest('POST', '/generate-chapter', {
                 student_id: userId,
-                topic,
+                topic: topic.trim(),
                 chapter_number: 1
             });
+            
             hideLoading();
+            generateBtn.disabled = false;
+            generateBtn.textContent = 'Generate New Chapter';
 
-            console.log('Generated chapter:', chapter); // Debug log
+            console.log('Generated chapter response:', chapter); // Debug log
             
             if (chapter && chapter.id) {
                 // Refresh the books list first to ensure the new chapter appears
@@ -242,12 +260,21 @@ async function setupChapterGeneration(userId) {
                 }
             } else {
                 console.error('Chapter missing id:', chapter);
-                showError('Chapter generated but missing ID');
+                showError('Chapter generated but missing ID. Please try again.');
             }
         } catch (err) {
             console.error('Failed to generate chapter', err);
-            showError(err.message || 'Failed to generate chapter');
+            generateBtn.disabled = false;
+            generateBtn.textContent = 'Generate New Chapter';
             hideLoading();
+            
+            // Show detailed error message
+            const errorMsg = err.message || 'Failed to generate chapter';
+            if (errorMsg.includes('API key') || errorMsg.includes('OpenAI')) {
+                showError('OpenAI API key not configured. Please check your .env file.');
+            } else {
+                showError(errorMsg);
+            }
         }
     });
 }
@@ -330,7 +357,16 @@ function displayChapter(chapter) {
     }
 }
 
+// Prevent multiple initializations
+let dashboardInitialized = false;
+
 document.addEventListener('DOMContentLoaded', () => {
+    // Only initialize once
+    if (dashboardInitialized) {
+        return;
+    }
+    dashboardInitialized = true;
+    
     // Clear any redirect flags when dashboard loads successfully
     sessionStorage.removeItem('redirecting');
     // Small delay to ensure page is fully loaded before checking auth
