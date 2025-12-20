@@ -88,7 +88,7 @@ async def lifespan(app: FastAPI):
 # Initialize FastAPI app with optional lifespan
 if IS_SERVERLESS:
     # In serverless, lifespan events may not work reliably
-app = FastAPI(
+    app = FastAPI(
         title="Peregrine AI Tutor Platform",
         lifespan=None,  # Disable lifespan in serverless
         docs_url="/api/docs",  # Configure docs to be at /api/docs
