@@ -181,6 +181,13 @@ def register(user: UserCreate, db: Session = Depends(get_db)):
 @app.post("/api/auth/login", response_model=Token)
 def login(creds: UserAuth, db: Session = Depends(get_db)):
     """Authenticate user and return JWT access token."""
+    # Ensure tables exist (lazy creation for serverless)
+    if IS_SERVERLESS:
+        try:
+            Base.metadata.create_all(bind=engine)
+        except Exception as e:
+            logger.warning(f"Could not create tables on request: {e}")
+    
     user = db.query(User).filter(User.email == creds.email).first()
     if not user:
         raise HTTPException(status_code=400, detail="Incorrect email or password")
