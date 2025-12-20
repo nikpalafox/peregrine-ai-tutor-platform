@@ -71,6 +71,21 @@
    python -m http.server 3000
    ```
 
+## 🚀 Deployment to Vercel
+
+This project is ready to deploy to Vercel! See [DEPLOYMENT.md](./DEPLOYMENT.md) for detailed instructions.
+
+**Quick Deploy:**
+```bash
+npm i -g vercel
+vercel login
+vercel --prod
+```
+
+**Important:** Set these environment variables in Vercel:
+- `OPENAI_API_KEY` - Your OpenAI API key
+- `SECRET_KEY` - A strong secret key for JWT tokens
+
 ## 🏗️ Architecture
 
 ```mermaid

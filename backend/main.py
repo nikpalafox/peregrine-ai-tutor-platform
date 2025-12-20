@@ -47,9 +47,54 @@ Base.metadata.create_all(bind=engine)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(
-    title="Peregrine AI Tutor Platform"
-)
+# Check if running in serverless environment (Vercel)
+IS_SERVERLESS = os.getenv("VERCEL") == "1" or os.getenv("AWS_LAMBDA_FUNCTION_NAME") is not None
+
+# Define lifespan function (will be used later)
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan context manager for FastAPI application startup and shutdown events"""
+    # Startup: Initialize gamification system
+    try:
+        # Update gamification engine methods
+        gamification_engine.get_student_stats = GamificationStorage.get_student_stats
+        gamification_engine.student_has_badge = GamificationStorage.student_has_badge
+        gamification_engine.award_badge = GamificationStorage.award_badge
+        gamification_engine.get_student_badges = GamificationStorage.get_student_badges
+        gamification_engine.get_student_level = GamificationStorage.get_student_level
+        gamification_engine.save_student_level = GamificationStorage.save_student_level
+        gamification_engine.get_streak = GamificationStorage.get_streak
+        gamification_engine.save_streak = GamificationStorage.save_streak
+        gamification_engine.get_student_streaks = GamificationStorage.get_student_streaks
+        gamification_engine.get_active_quests = GamificationStorage.get_active_quests
+        gamification_engine.save_quest_progress = GamificationStorage.save_quest_progress
+        gamification_engine.get_recent_achievements = GamificationStorage.get_recent_achievements
+        gamification_engine.get_leaderboard = GamificationStorage.get_leaderboard_data
+        
+        print("✅ Gamification system initialized successfully!")
+    except Exception as e:
+        print(f"❌ Error initializing gamification: {e}")
+    
+    yield  # Server is running
+    
+    # Shutdown: Clean up resources if needed
+    # Add any cleanup code here
+
+# Initialize FastAPI app with optional lifespan
+if IS_SERVERLESS:
+    # In serverless, lifespan events may not work reliably
+    app = FastAPI(
+        title="Peregrine AI Tutor Platform",
+        lifespan=None  # Disable lifespan in serverless
+    )
+    # Initialize gamification manually for serverless (after gamification_engine is created)
+    # This will be done after gamification_engine initialization below
+else:
+    # Use lifespan for regular server
+    app = FastAPI(
+        title="Peregrine AI Tutor Platform",
+        lifespan=lifespan
+    )
 
 # Enable CORS for frontend connection
 app.add_middleware(

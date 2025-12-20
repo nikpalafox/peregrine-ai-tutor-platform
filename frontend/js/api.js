@@ -1,7 +1,7 @@
 // API Configuration
-// API configuration
-// Point to backend server (includes /api prefix)
-const API_BASE_URL = 'http://127.0.0.1:8000/api';
+// Automatically detect if running on Vercel (production) or localhost (development)
+const isProduction = window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
+const API_BASE_URL = isProduction ? '/api' : 'http://127.0.0.1:8000/api';
 
 // Generic API request function
 async function apiRequest(method, endpoint, data = null) {
