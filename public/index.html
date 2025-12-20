@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Peregrine AI Reading Platform</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <style>
+        body {
+            font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+            width: 100%;
+            max-width: 1200px;
+            min-height: 80vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .auth-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 80vh;
+            padding: 20px;
+        }
+
+        .auth-box {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            width: 100%;
+            max-width: 400px;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s ease;
+        }
+
+        .form-input:focus {
+            border-color: #667eea;
+            outline: none;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-weight: 600;
+            width: 100%;
+            cursor: pointer;
+            transition: transform 0.2s ease;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+        }
+
+        .auth-toggle-btn {
+            padding: 0.5rem 1rem;
+            font-weight: 500;
+            color: #4B5563;
+            border-radius: 0.5rem;
+            transition: all 0.2s;
+        }
+
+        .auth-toggle-btn:hover {
+            color: #1F2937;
+            background-color: #F3F4F6;
+        }
+
+        .auth-toggle-btn.active {
+            color: #1F2937;
+            background-color: #F3F4F6;
+        }
+
+        .error-message {
+            color: #e53e3e;
+            font-size: 14px;
+            margin-top: 5px;
+            display: none;
+        }
+
+        .error-message.visible {
+            display: block;
+        }
+
+        #errorToast {
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+        }
+
+        #errorToast.visible {
+            opacity: 1;
+            visibility: visible;
+            transform: translateY(0) scale(1);
+        }
+
+        /* Loading styles */
+        #loadingOverlay {
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+        }
+
+        #loadingOverlay .animate-spin {
+            border-color: white;
+        }
+    </style>
+</head>
+<body>
+    <!-- Error Toast -->
+    <div id="errorToast" class="fixed top-4 right-4 bg-red-500 text-white px-6 py-3 rounded-lg shadow-lg transform transition-all duration-300 scale-0 z-50"></div>
+    
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="fixed inset-0 bg-gray-900 bg-opacity-50 hidden flex items-center justify-center z-50">
+        <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-white"></div>
+    </div>
+
+    <div class="container">
+        <!-- Auth Container -->
+        <div id="auth-container" class="auth-container">
+            <div class="auth-box">
+                <h2 class="text-3xl font-bold mb-6 text-center">Welcome to Peregrine</h2>
+                <div class="mb-6">
+                    <div id="auth-toggle" class="flex justify-center space-x-4 mb-6">
+                        <button onclick="showLogin()" class="auth-toggle-btn active">Login</button>
+                        <button onclick="showRegister()" class="auth-toggle-btn">Register</button>
+                    </div>
+                    
+                    <!-- Login Form -->
+                    <form id="login-form" onsubmit="handleLogin(event)">
+                        <div class="form-group">
+                            <input type="email" id="login-email" class="form-input" placeholder="Email" required>
+                        </div>
+                        <div class="form-group">
+                            <input type="password" id="login-password" class="form-input" placeholder="Password" required>
+                        </div>
+                        <button type="submit" class="btn-primary">Login</button>
+                        <div id="login-error" class="error-message"></div>
+                    </form>
+
+                    <!-- Register Form -->
+                    <form id="register-form" onsubmit="handleRegister(event)" style="display: none;">
+                        <div class="form-group">
+                            <input type="text" id="register-name" class="form-input" placeholder="Full name" required>
+                        </div>
+                        <div class="form-group">
+                            <input type="email" id="register-email" class="form-input" placeholder="Email" required>
+                        </div>
+                        <div class="form-group">
+                            <input type="password" id="register-password" class="form-input" placeholder="Password" required>
+                        </div>
+                        <div class="form-group">
+                            <select id="register-grade" class="form-input" required>
+                                <option value="">Select Grade Level</option>
+                                <option value="1">Grade 1</option>
+                                <option value="2">Grade 2</option>
+                                <option value="3">Grade 3</option>
+                                <option value="4">Grade 4</option>
+                                <option value="5">Grade 5</option>
+                                <option value="6">Grade 6</option>
+                            </select>
+                        </div>
+                        <button type="submit" class="btn-primary">Create Account</button>
+                        <div id="register-error" class="error-message"></div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="js/api.js"></script>
+    <script src="js/auth.js"></script>
+</body>
+</html>

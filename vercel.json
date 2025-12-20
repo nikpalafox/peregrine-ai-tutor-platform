@@ -10,23 +10,6 @@
     {
       "source": "/api/:path*",
       "destination": "/api/index.py"
-    },
-    {
-      "source": "/dashboard.html",
-      "destination": "/frontend/dashboard.html"
-    },
-    {
-      "source": "/reading.html",
-      "destination": "/frontend/reading.html"
-    },
-    {
-      "source": "/index.html",
-      "destination": "/frontend/index.html"
-    },
-    {
-      "source": "/:path*",
-      "destination": "/frontend/:path*"
     }
   ]
 }
-
