@@ -151,6 +151,13 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
 @app.post("/api/auth/register")
 def register(user: UserCreate, db: Session = Depends(get_db)):
     """Register a new user. Returns basic confirmation."""
+    # Ensure tables exist (lazy creation for serverless)
+    if IS_SERVERLESS:
+        try:
+            Base.metadata.create_all(bind=engine)
+        except Exception as e:
+            logger.warning(f"Could not create tables on request: {e}")
+    
     # check if email already exists
     existing = db.query(User).filter(User.email == user.email).first()
     if existing:
