@@ -22,13 +22,13 @@ load_dotenv()
 
 # Import the FastAPI app (this will detect serverless mode)
 try:
-    from main import app
+    from main import app as fastapi_app
 except Exception as e:
     print(f"Error importing main: {e}")
     import traceback
     traceback.print_exc()
     raise
 
-# For Vercel, export the FastAPI app directly
-# Vercel's Python runtime handles ASGI apps natively
-handler = app
+# Vercel Python runtime automatically detects ASGI apps
+# Export as 'app' which is what Vercel looks for
+app = fastapi_app
