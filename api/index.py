@@ -20,21 +20,15 @@ os.environ.setdefault("PYTHONPATH", str(backend_dir))
 from dotenv import load_dotenv
 load_dotenv()
 
-# Import Mangum for AWS Lambda/API Gateway compatibility (Vercel uses similar)
-try:
-    from mangum import Mangum
-    MANGUM_AVAILABLE = True
-except ImportError:
-    print("Warning: mangum not installed, using basic handler")
-    MANGUM_AVAILABLE = False
-
 # Import the FastAPI app (this will detect serverless mode)
-from main import app
+try:
+    from main import app
+except Exception as e:
+    print(f"Error importing main: {e}")
+    import traceback
+    traceback.print_exc()
+    raise
 
-# Wrap FastAPI app with Mangum for serverless compatibility
-if MANGUM_AVAILABLE:
-    handler = Mangum(app, lifespan="off")  # Disable lifespan events in serverless
-else:
-    # Basic handler fallback - Vercel Python runtime should handle this
-    handler = app
-
+# For Vercel, export the FastAPI app directly
+# Vercel's Python runtime handles ASGI apps natively
+handler = app
