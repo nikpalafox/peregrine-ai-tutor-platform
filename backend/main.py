@@ -1855,12 +1855,12 @@ async def chat_with_tutor(message: ChatMessage, db: Session = Depends(get_db)): 
 async def generate_chapter(request: BookRequest, db: Session = Depends(get_db)):
     """Generate a custom chapter for the student with gamification"""
     try:
-    student_data = get_or_create_student(request.student_id, db)
-    if not student_data:
-        raise HTTPException(status_code=404, detail="Student not found")
-    
-    student = Student(**student_data)
-    
+        student_data = get_or_create_student(request.student_id, db)
+        if not student_data:
+            raise HTTPException(status_code=404, detail="Student not found")
+        
+        student = Student(**student_data)
+        
         # Ensure progress_db entry exists
         if request.student_id not in progress_db:
             progress_db[request.student_id] = {
@@ -1872,40 +1872,40 @@ async def generate_chapter(request: BookRequest, db: Session = Depends(get_db)):
         elif "generated_books" not in progress_db[request.student_id]:
             progress_db[request.student_id]["generated_books"] = []
         
-    if request.student_id not in student_contexts:
-        student_contexts[request.student_id] = AITutor(student)
-    
-    ai_tutor = student_contexts[request.student_id]
+        if request.student_id not in student_contexts:
+            student_contexts[request.student_id] = AITutor(student)
+        
+        ai_tutor = student_contexts[request.student_id]
         
         print(f"Generating chapter for student {request.student_id}, topic: {request.topic}")
-    chapter = await ai_tutor.book_generator.generate_chapter(
-        request.topic, 
-        request.chapter_number
-    )
-    
+        chapter = await ai_tutor.book_generator.generate_chapter(
+            request.topic, 
+            request.chapter_number
+        )
+        
         print(f"Chapter generated: {chapter.get('id', 'NO ID')}, title: {chapter.get('title', 'NO TITLE')}")
-    
+        
         # Store the generated chapter
-    progress_db[request.student_id]["generated_books"].append(chapter)
+        progress_db[request.student_id]["generated_books"].append(chapter)
         print(f"Chapter stored. Total books for student: {len(progress_db[request.student_id]['generated_books'])}")
-    
-    # 🎮 Record gamification activity
-    activity_data = GamificationActivityRequest(
-        student_id=request.student_id,
-        activity_type="book_generated",
-        activity_data={"topic": request.topic}
-    )
-    
-    try:
-        gamification_response = await record_activity(activity_data)
-    except Exception as e:
-        print(f"Gamification error: {e}")
-        gamification_response = {"activity_processed": False}
-    
-    return {
-        **chapter,
-        "gamification": gamification_response
-    }
+        
+        # 🎮 Record gamification activity
+        activity_data = GamificationActivityRequest(
+            student_id=request.student_id,
+            activity_type="book_generated",
+            activity_data={"topic": request.topic}
+        )
+        
+        try:
+            gamification_response = await record_activity(activity_data)
+        except Exception as e:
+            print(f"Gamification error: {e}")
+            gamification_response = {"activity_processed": False}
+        
+        return {
+            **chapter,
+            "gamification": gamification_response
+        }
     except Exception as e:
         print(f"Error generating chapter: {e}")
         import traceback
