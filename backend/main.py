@@ -47,13 +47,18 @@ logger = logging.getLogger(__name__)
 # Check if running in serverless environment (Vercel)
 IS_SERVERLESS = os.getenv("VERCEL") == "1" or os.getenv("AWS_LAMBDA_FUNCTION_NAME") is not None
 
-# Create database tables (skip in serverless - filesystem is read-only)
-if not IS_SERVERLESS:
-    try:
-        Base.metadata.create_all(bind=engine)
-    except Exception as e:
-        logger.warning(f"Could not create database tables: {e}")
-        # Continue anyway - app uses in-memory storage primarily
+# Create database tables
+# In serverless, we use in-memory database which can have tables created
+# In local, we use file-based database
+try:
+    Base.metadata.create_all(bind=engine)
+    if IS_SERVERLESS:
+        print("✅ Database tables created in serverless mode (in-memory)")
+    else:
+        print("✅ Database tables created (file-based)")
+except Exception as e:
+    logger.warning(f"Could not create database tables: {e}")
+    # Continue anyway - app uses in-memory storage primarily
 
 # Define lifespan function (will be used later)
 @asynccontextmanager
