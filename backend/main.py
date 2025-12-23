@@ -2034,13 +2034,62 @@ class ReadingContentRequest(BaseModel):
     book_id: str
 
 @app.get("/api/reading/content/{book_id}")
-async def get_reading_content(book_id: str):
+async def get_reading_content(book_id: str, db: Session = Depends(get_db)):
     """Get reading content for a book/chapter"""
-    # Try to find the book in all students' generated books
+    print(f"📖 get_reading_content called for book_id: {book_id}")
+    
+    # First, try to get from database
+    try:
+        db_chapter = db.query(Chapter).filter(Chapter.id == book_id).first()
+        if db_chapter:
+            print(f"✅ Found chapter in database: {book_id}")
+            content = db_chapter.content or ""
+            # Split content into pages (by paragraphs or sentences)
+            pages = []
+            if content:
+                # Split by double newlines first (paragraphs)
+                paragraphs = [p.strip() for p in content.split("\n\n") if p.strip()]
+                for para in paragraphs:
+                    # If paragraph is long, split by sentences
+                    sentences = para.split('. ')
+                    current_page = ""
+                    for sentence in sentences:
+                        if len(current_page) + len(sentence) < 500:  # ~500 chars per page
+                            current_page += sentence + ". "
+                        else:
+                            if current_page:
+                                pages.append(current_page.strip())
+                            current_page = sentence + ". "
+                    if current_page:
+                        pages.append(current_page.strip())
+            
+            # If no pages created, create one page with all content
+            if not pages:
+                pages = [{"text": content}] if content else [{"text": "No content available"}]
+            else:
+                # Convert string pages to dict format
+                pages = [{"text": page} if isinstance(page, str) else page for page in pages]
+            
+            return {
+                "id": db_chapter.id,
+                "title": db_chapter.title,
+                "content": content,
+                "pages": pages,
+                "total_pages": len(pages),
+                "reading_progress": db_chapter.reading_progress or 0.0
+            }
+    except Exception as db_error:
+        print(f"⚠️ Error querying database for book_id {book_id}: {db_error}")
+        import traceback
+        traceback.print_exc()
+    
+    # Fallback: Try to find the book in in-memory progress_db
+    print(f"🔍 Checking in-memory storage for book_id: {book_id}")
     for student_id, student_data in progress_db.items():
         books = student_data.get("generated_books", [])
         for book in books:
             if book.get("id") == book_id:
+                print(f"✅ Found chapter in in-memory storage: {book_id}")
                 # Split content into pages (by paragraphs or sentences)
                 content = book.get("content", "")
                 pages = []
@@ -2064,12 +2113,17 @@ async def get_reading_content(book_id: str):
                     pages = [{"text": "No content available"}]
                 
                 return {
-                    "book_id": book_id,
+                    "id": book_id,
                     "title": book.get("title", "Reading"),
-                    "pages": pages
+                    "content": content,
+                    "pages": pages,
+                    "total_pages": len(pages),
+                    "reading_progress": 0.0
                 }
     
-    raise HTTPException(status_code=404, detail="Book not found")
+    # If we get here, book was not found in database or in-memory storage
+    print(f"❌ Book not found: {book_id}")
+    raise HTTPException(status_code=404, detail=f"Book with id {book_id} not found")
 
 @app.post("/api/reading/feedback")
 async def get_reading_feedback(request: ReadingFeedbackRequest, db: Session = Depends(get_db)):
