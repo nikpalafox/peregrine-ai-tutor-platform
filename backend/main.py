@@ -17,8 +17,8 @@ from dotenv import load_dotenv
 
 # Import our models and database
 from models.auth import UserAuth, UserCreate, UserInDB, Token, TokenData
-from models.reading import Chapter, ReadingSession
-from models.schema import Base, User
+from models.reading import Chapter as ChapterPydantic, ReadingSession as ReadingSessionPydantic
+from models.schema import Base, User, Chapter, ReadingSession
 from database import engine, get_db
 from utils import format_xp_display, get_difficulty_color, create_achievement_notification
 from gamification import XPCalculator, QuestGenerator, get_student_rank
@@ -97,7 +97,7 @@ async def lifespan(app: FastAPI):
 # Initialize FastAPI app with optional lifespan
 if IS_SERVERLESS:
     # In serverless, lifespan events may not work reliably
-    app = FastAPI(
+app = FastAPI(
         title="Peregrine AI Tutor Platform",
         lifespan=None,  # Disable lifespan in serverless
         docs_url="/api/docs",  # Configure docs to be at /api/docs
@@ -1884,7 +1884,7 @@ async def generate_chapter(request: BookRequest, db: Session = Depends(get_db)):
         
         student = Student(**student_data)
         
-        # Ensure progress_db entry exists
+        # Ensure progress_db entry exists (for backward compatibility)
         if request.student_id not in progress_db:
             progress_db[request.student_id] = {
                 "total_messages": 0,
@@ -1908,7 +1908,21 @@ async def generate_chapter(request: BookRequest, db: Session = Depends(get_db)):
         
         print(f"Chapter generated: {chapter.get('id', 'NO ID')}, title: {chapter.get('title', 'NO TITLE')}")
         
-        # Store the generated chapter
+        # Save chapter to database
+        chapter_id = chapter.get('id', str(uuid.uuid4()))
+        db_chapter = Chapter(
+            id=chapter_id,
+            user_id=request.student_id,  # student_id is the same as user_id
+            title=chapter.get('title', 'Untitled Chapter'),
+            content=chapter.get('content', ''),
+            reading_progress=0.0
+        )
+        db.add(db_chapter)
+        db.commit()
+        db.refresh(db_chapter)
+        print(f"Chapter saved to database: {chapter_id}")
+        
+        # Also store in progress_db for backward compatibility
         progress_db[request.student_id]["generated_books"].append(chapter)
         print(f"Chapter stored. Total books for student: {len(progress_db[request.student_id]['generated_books'])}")
         
@@ -1942,19 +1956,22 @@ async def get_student_books(student_id: str, db: Session = Depends(get_db)):
     if not student:
         raise HTTPException(status_code=404, detail="Student not found")
     
-    # Ensure progress_db entry exists with generated_books
-    if student_id not in progress_db:
-        progress_db[student_id] = {
-            "total_messages": 0,
-            "topics_covered": [],
-            "last_active": datetime.now().isoformat(),
-            "generated_books": []
-        }
-    elif "generated_books" not in progress_db[student_id]:
-        progress_db[student_id]["generated_books"] = []
+    # Get chapters from database
+    db_chapters = db.query(Chapter).filter(Chapter.user_id == student_id).order_by(Chapter.created_at.desc()).all()
     
-    books = progress_db[student_id].get("generated_books", [])
-    print(f"Returning {len(books)} books for student {student_id}")
+    # Convert database chapters to the expected format
+    books = []
+    for chapter in db_chapters:
+        books.append({
+            "id": chapter.id,
+            "title": chapter.title,
+            "content": chapter.content,
+            "created_at": chapter.created_at.isoformat() if chapter.created_at else None,
+            "last_read_at": chapter.last_read_at.isoformat() if chapter.last_read_at else None,
+            "reading_progress": chapter.reading_progress
+        })
+    
+    print(f"Returning {len(books)} books from database for student {student_id}")
     return books
 
 # Reading Agent endpoints
@@ -2119,15 +2136,57 @@ Be warm, patient, and supportive like a caring teacher. Keep it brief (3-4 sente
         }
 
 @app.post("/api/reading/finish/{book_id}")
-async def finish_reading_session(book_id: str, data: dict):
-    """Save reading session results"""
-    # Store reading session data
-    # This could be saved to database in the future
-    return {
-        "message": "Reading session saved",
-        "book_id": book_id,
-        "results": data
-    }
+async def finish_reading_session(book_id: str, data: dict, db: Session = Depends(get_db)):
+    """Save reading session results to database"""
+    try:
+        # Get chapter first to verify it exists
+        chapter = db.query(Chapter).filter(Chapter.id == book_id).first()
+        if not chapter:
+            raise HTTPException(status_code=404, detail="Chapter not found")
+        
+        # Get student_id from payload or fall back to chapter's user_id
+        student_id = data.get('student_id') or chapter.user_id
+        
+        # Create reading session record
+        session_id = str(uuid.uuid4())
+        reading_session = ReadingSession(
+            id=session_id,
+            user_id=student_id,
+            chapter_id=book_id,
+            start_time=datetime.utcnow() - timedelta(seconds=data.get('reading_time_seconds', 0)),
+            end_time=datetime.utcnow(),
+            accuracy_score=data.get('accuracy_score'),
+            comprehension_score=data.get('comprehension_score'),
+            words_per_minute=data.get('wpm')
+        )
+        
+        db.add(reading_session)
+        
+        # Update chapter's last_read_at and reading_progress
+        chapter.last_read_at = datetime.utcnow()
+        # Calculate reading progress based on words read vs total words
+        total_words = len(chapter.content.split()) if chapter.content else 0
+        if total_words > 0:
+            words_read = data.get('words_read', 0)
+            chapter.reading_progress = min(100.0, (words_read / total_words) * 100.0)
+        
+        db.commit()
+        db.refresh(reading_session)
+        
+        print(f"Reading session saved to database: {session_id} for chapter {book_id}")
+        
+        return {
+            "message": "Reading session saved",
+            "book_id": book_id,
+            "session_id": session_id,
+            "results": data
+        }
+    except Exception as e:
+        print(f"Error saving reading session: {e}")
+        import traceback
+        traceback.print_exc()
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to save reading session: {str(e)}")
 
 def extract_topics(message: str) -> List[str]:
     """Simple topic extraction from student messages"""

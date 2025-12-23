@@ -606,6 +606,7 @@ class ReadingSession {
                 const comprehension = comprehensionInput ? parseInt(comprehensionInput.value, 10) : null;
 
                 const payload = {
+                    student_id: this.studentId,
                     reading_time_seconds: durationSec,
                     words_read: totalWords,
                     wpm,
