@@ -132,7 +132,14 @@ async function loadUserProfile(userId) {
 
 async function loadStudentBooks(userId) {
     try {
+        if (!userId) {
+            console.error('No userId provided to loadStudentBooks');
+            showError('User ID not found. Please log in again.');
+            return;
+        }
+        console.log(`Loading books for userId: ${userId}`);
         const books = await apiRequest('GET', `/students/${userId}/books`) || [];
+        console.log(`Received ${books.length} books from API`);
         displayReadingList(books);
     } catch (err) {
         console.error('Failed to load books', err);
