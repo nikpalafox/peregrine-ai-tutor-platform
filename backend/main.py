@@ -122,6 +122,19 @@ app.add_middleware(
     allow_headers=["*"]
 )
 
+# Add request logging middleware for debugging
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+
+class LoggingMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        print(f"🌐 Incoming request: {request.method} {request.url.path}")
+        response = await call_next(request)
+        print(f"📤 Response: {response.status_code} for {request.method} {request.url.path}")
+        return response
+
+app.add_middleware(LoggingMiddleware)
+
 
 # --- Authentication helpers (JWT + password hashing) -----------------
 import bcrypt
@@ -1960,6 +1973,7 @@ async def generate_chapter(request: BookRequest, db: Session = Depends(get_db)):
 @app.get("/api/students/{student_id}/books")
 async def get_student_books(student_id: str, db: Session = Depends(get_db)):
     """Get all books/chapters generated for a student"""
+    print(f"📖 get_student_books endpoint called with student_id: {student_id}")
     try:
         # Verify user exists in database
         user = db.query(User).filter(User.id == student_id).first()
