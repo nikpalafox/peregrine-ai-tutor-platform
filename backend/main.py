@@ -1910,17 +1910,25 @@ async def generate_chapter(request: BookRequest, db: Session = Depends(get_db)):
         
         # Save chapter to database
         chapter_id = chapter.get('id', str(uuid.uuid4()))
-        db_chapter = Chapter(
-            id=chapter_id,
-            user_id=request.student_id,  # student_id is the same as user_id
-            title=chapter.get('title', 'Untitled Chapter'),
-            content=chapter.get('content', ''),
-            reading_progress=0.0
-        )
-        db.add(db_chapter)
-        db.commit()
-        db.refresh(db_chapter)
-        print(f"Chapter saved to database: {chapter_id}")
+        try:
+            db_chapter = Chapter(
+                id=chapter_id,
+                user_id=request.student_id,  # student_id is the same as user_id
+                title=chapter.get('title', 'Untitled Chapter'),
+                content=chapter.get('content', ''),
+                created_at=datetime.utcnow(),  # Explicitly set created_at
+                reading_progress=0.0
+            )
+            db.add(db_chapter)
+            db.commit()
+            db.refresh(db_chapter)
+            print(f"Chapter saved to database: {chapter_id} for user {request.student_id}")
+        except Exception as db_error:
+            print(f"Error saving chapter to database: {db_error}")
+            import traceback
+            traceback.print_exc()
+            db.rollback()
+            # Continue anyway - chapter is still in progress_db
         
         # Also store in progress_db for backward compatibility
         progress_db[request.student_id]["generated_books"].append(chapter)
@@ -1952,27 +1960,53 @@ async def generate_chapter(request: BookRequest, db: Session = Depends(get_db)):
 @app.get("/api/students/{student_id}/books")
 async def get_student_books(student_id: str, db: Session = Depends(get_db)):
     """Get all books/chapters generated for a student"""
-    student = get_or_create_student(student_id, db)
-    if not student:
-        raise HTTPException(status_code=404, detail="Student not found")
-    
-    # Get chapters from database
-    db_chapters = db.query(Chapter).filter(Chapter.user_id == student_id).order_by(Chapter.created_at.desc()).all()
-    
-    # Convert database chapters to the expected format
-    books = []
-    for chapter in db_chapters:
-        books.append({
-            "id": chapter.id,
-            "title": chapter.title,
-            "content": chapter.content,
-            "created_at": chapter.created_at.isoformat() if chapter.created_at else None,
-            "last_read_at": chapter.last_read_at.isoformat() if chapter.last_read_at else None,
-            "reading_progress": chapter.reading_progress
-        })
-    
-    print(f"Returning {len(books)} books from database for student {student_id}")
-    return books
+    try:
+        # Verify user exists in database
+        user = db.query(User).filter(User.id == student_id).first()
+        if not user:
+            print(f"⚠️ User not found for student_id: {student_id}")
+            # Fallback: check in-memory progress_db
+            if student_id in progress_db and "generated_books" in progress_db[student_id]:
+                books = progress_db[student_id]["generated_books"]
+                print(f"Returning {len(books)} books from in-memory storage for student {student_id}")
+                return books
+            return []
+        
+        # Get chapters from database
+        print(f"🔍 Querying chapters for user_id: {student_id}")
+        db_chapters = db.query(Chapter).filter(Chapter.user_id == student_id).order_by(Chapter.created_at.desc()).all()
+        print(f"✅ Found {len(db_chapters)} chapters in database for user {student_id}")
+        
+        # Convert database chapters to the expected format
+        books = []
+        for chapter in db_chapters:
+            books.append({
+                "id": chapter.id,
+                "title": chapter.title,
+                "content": chapter.content,
+                "created_at": chapter.created_at.isoformat() if chapter.created_at else None,
+                "last_read_at": chapter.last_read_at.isoformat() if chapter.last_read_at else None,
+                "reading_progress": chapter.reading_progress
+            })
+        
+        # If no books in database, check in-memory storage as fallback
+        if len(books) == 0 and student_id in progress_db and "generated_books" in progress_db[student_id]:
+            print(f"⚠️ No books in database, checking in-memory storage for student {student_id}")
+            books = progress_db[student_id]["generated_books"]
+            print(f"Returning {len(books)} books from in-memory storage")
+        
+        print(f"📚 Returning {len(books)} books for student {student_id}")
+        return books
+    except Exception as e:
+        print(f"❌ Error retrieving books for student {student_id}: {e}")
+        import traceback
+        traceback.print_exc()
+        # Fallback to in-memory storage
+        if student_id in progress_db and "generated_books" in progress_db[student_id]:
+            print(f"🔄 Falling back to in-memory storage for student {student_id}")
+            return progress_db[student_id]["generated_books"]
+        # Return empty list instead of raising error to prevent frontend issues
+        return []
 
 # Reading Agent endpoints
 class ReadingFeedbackRequest(BaseModel):
