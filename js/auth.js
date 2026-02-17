@@ -3,19 +3,27 @@
 function showLogin() {
     document.getElementById('login-form').style.display = 'block';
     document.getElementById('register-form').style.display = 'none';
-    const btnLogin = document.querySelector('button[onclick="showLogin()"]');
-    const btnRegister = document.querySelector('button[onclick="showRegister()"]');
-    if (btnLogin) btnLogin.classList.add('active');
-    if (btnRegister) btnRegister.classList.remove('active');
+    const tabs = document.querySelectorAll('.auth-tab, .auth-toggle-btn');
+    tabs.forEach(btn => {
+        if (btn.onclick && btn.onclick.toString().includes('showLogin')) {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    });
 }
 
 function showRegister() {
     document.getElementById('login-form').style.display = 'none';
     document.getElementById('register-form').style.display = 'block';
-    const btnLogin = document.querySelector('button[onclick="showLogin()"]');
-    const btnRegister = document.querySelector('button[onclick="showRegister()"]');
-    if (btnLogin) btnLogin.classList.remove('active');
-    if (btnRegister) btnRegister.classList.add('active');
+    const tabs = document.querySelectorAll('.auth-tab, .auth-toggle-btn');
+    tabs.forEach(btn => {
+        if (btn.onclick && btn.onclick.toString().includes('showRegister')) {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    });
 }
 
 async function handleLogin(event) {

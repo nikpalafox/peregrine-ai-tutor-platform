@@ -5,206 +5,520 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Reading - Peregrine AI Platform</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Merriweather:wght@400;700&display=swap" rel="stylesheet">
     <style>
+        *, *::before, *::after { box-sizing: border-box; }
+
+        :root {
+            --primary: #6366f1;
+            --primary-dark: #4f46e5;
+            --primary-light: #818cf8;
+            --primary-bg: #eef2ff;
+            --surface: #ffffff;
+            --surface-dim: #f8fafc;
+            --surface-container: #f1f5f9;
+            --text-primary: #0f172a;
+            --text-secondary: #475569;
+            --text-muted: #94a3b8;
+            --border: #e2e8f0;
+            --error: #ef4444;
+            --success: #22c55e;
+            --success-bg: #f0fdf4;
+            --warning: #f59e0b;
+            --radius-sm: 8px;
+            --radius-md: 12px;
+            --radius-lg: 16px;
+            --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+            --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.07), 0 2px 4px -2px rgba(0,0,0,0.05);
+            --shadow-lg: 0 10px 25px -3px rgba(0,0,0,0.08), 0 4px 10px -4px rgba(0,0,0,0.04);
+        }
+
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: #f8f9ff;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            background: var(--surface-dim);
             min-height: 100vh;
+            margin: 0;
+            -webkit-font-smoothing: antialiased;
         }
 
-        .reading-container {
-            max-width: 900px;
-            margin: 0 auto;
-            padding: 40px 20px;
-        }
-
-        .reading-header {
+        /* Top bar */
+        .reading-topbar {
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            padding: 0 32px;
+            height: 56px;
             display: flex;
-            justify-content: space-between;
             align-items: center;
-            margin-bottom: 30px;
-            background: white;
-            padding: 20px;
-            border-radius: 12px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 50;
+        }
+
+        .reading-topbar-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            color: var(--text-secondary);
+            font-size: 14px;
+            font-weight: 500;
+            text-decoration: none;
+            padding: 6px 12px;
+            border-radius: var(--radius-sm);
+            transition: all 0.15s ease;
+        }
+
+        .back-link:hover {
+            color: var(--text-primary);
+            background: var(--surface-container);
+        }
+
+        .reading-topbar-title {
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .reading-topbar-right {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .accuracy-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 14px;
+            background: var(--primary-bg);
+            color: var(--primary);
+            border-radius: 100px;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .page-badge {
+            font-size: 13px;
+            color: var(--text-muted);
+            font-weight: 500;
+        }
+
+        /* Progress bar at top */
+        .reading-progress-strip {
+            height: 3px;
+            background: var(--surface-container);
+            width: 100%;
+        }
+
+        .reading-progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--primary), var(--primary-light));
+            width: 0%;
+            transition: width 0.4s ease;
+        }
+
+        /* Main reading area */
+        .reading-layout {
+            max-width: 820px;
+            margin: 0 auto;
+            padding: 40px 24px;
         }
 
         .reading-content {
-            background: white;
-            padding: 40px;
-            border-radius: 12px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-            margin-bottom: 30px;
-            line-height: 1.8;
-            font-size: 18px;
-            color: #333;
-            min-height: 400px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            padding: 48px;
+            margin-bottom: 24px;
+            min-height: 360px;
         }
 
-        .progress-container {
-            background: white;
-            padding: 20px;
-            border-radius: 12px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-            margin-bottom: 20px;
+        .reading-content #readingText {
+            font-family: 'Merriweather', Georgia, serif;
+            font-size: 19px;
+            line-height: 1.9;
+            color: var(--text-primary);
         }
 
-        .progress-bar {
-            background: #e0e0e0;
-            height: 10px;
-            border-radius: 5px;
-            overflow: hidden;
-            margin: 10px 0;
+        .reading-content #transcriptDisplay {
+            margin-top: 24px;
+            padding-top: 16px;
+            border-top: 1px solid var(--border);
+            font-family: 'Inter', system-ui, sans-serif;
+            font-size: 13px;
+            color: var(--text-muted);
         }
 
-        .progress {
-            height: 100%;
-            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
-            width: 0%;
-            transition: width 0.3s ease;
+        .reading-content #transcriptDisplay strong {
+            color: var(--text-secondary);
         }
 
-        .controls {
+        /* Agent feedback panel */
+        #readingAgentPanel {
+            background: var(--primary-bg);
+            border: 1px solid rgba(99,102,241,0.15);
+            border-radius: var(--radius-md);
+            padding: 16px 20px;
+            margin-top: 24px;
+            transition: all 0.3s ease;
+        }
+
+        #readingAgentPanel .agent-row {
             display: flex;
-            gap: 10px;
-            justify-content: center;
-            flex-wrap: wrap;
-            margin-top: 20px;
+            align-items: flex-start;
+            gap: 12px;
         }
 
-        button {
-            padding: 12px 24px;
-            border-radius: 8px;
-            border: none;
+        #readingAgentPanel .agent-avatar {
+            width: 36px;
+            height: 36px;
+            background: linear-gradient(135deg, var(--primary), #8b5cf6);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            flex-shrink: 0;
+        }
+
+        #readingAgentPanel h3 {
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--primary-dark);
+            margin: 0 0 4px 0;
+        }
+
+        #readingAgentPanel #agentFeedback {
+            font-size: 14px;
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+
+        #readingAgentPanel.animate-pulse {
+            animation: agentPulse 0.5s ease-in-out;
+        }
+
+        @keyframes agentPulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.85; }
+        }
+
+        /* Controls */
+        .controls-bar {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .btn-control {
+            padding: 10px 20px;
+            border: 1.5px solid var(--border);
+            background: var(--surface);
+            color: var(--text-secondary);
+            border-radius: var(--radius-sm);
+            font-size: 14px;
             font-weight: 600;
             cursor: pointer;
-            transition: transform 0.2s ease;
+            transition: all 0.15s ease;
+            font-family: inherit;
         }
 
-        button:hover {
-            transform: translateY(-2px);
+        .btn-control:hover {
+            border-color: var(--text-muted);
+            color: var(--text-primary);
+            background: var(--surface-container);
         }
 
-        .btn-secondary {
-            background: #e0e0e0;
-            color: #333;
-        }
-
-        .btn-primary {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-        }
-
-        .btn-success {
-            background: #4CAF50;
-            color: white;
-        }
-
-        .btn-danger {
-            background: #f44336;
-            color: white;
-        }
-
-        .page-info {
-            text-align: center;
+        .btn-mic {
+            padding: 10px 24px;
+            border: none;
+            background: var(--success);
+            color: #fff;
+            border-radius: var(--radius-sm);
             font-size: 14px;
-            color: #666;
-            margin-top: 10px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            font-family: inherit;
         }
 
-        /* Loading styles */
-        #loadingOverlay {
-            background-color: rgba(0, 0, 0, 0.5);
-            z-index: 1000;
+        .btn-mic:hover {
+            filter: brightness(0.95);
         }
 
-        #loadingOverlay .animate-spin {
-            border-color: white;
+        .btn-mic.recording {
+            background: var(--error);
         }
 
+        .btn-finish {
+            padding: 10px 20px;
+            border: none;
+            background: var(--primary);
+            color: #fff;
+            border-radius: var(--radius-sm);
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            font-family: inherit;
+        }
+
+        .btn-finish:hover {
+            background: var(--primary-dark);
+        }
+
+        /* Word highlighting */
+        .text-green-600 {
+            color: #059669;
+            font-weight: 600;
+        }
+
+        .text-red-600 {
+            color: #dc2626;
+            text-decoration: underline;
+            text-decoration-color: rgba(220,38,38,0.3);
+            text-underline-offset: 3px;
+        }
+
+        .bg-yellow-200 {
+            background-color: #fef08a;
+            padding: 1px 4px;
+            border-radius: 3px;
+            font-weight: 600;
+        }
+
+        /* Results modal */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(15,23,42,0.5);
+            backdrop-filter: blur(4px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+            padding: 20px;
+        }
+
+        .modal-card {
+            background: var(--surface);
+            border-radius: var(--radius-lg);
+            padding: 40px;
+            max-width: 440px;
+            width: 100%;
+            box-shadow: 0 25px 60px -12px rgba(0,0,0,0.2);
+        }
+
+        .modal-card h3 {
+            font-size: 22px;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin: 0 0 28px 0;
+            text-align: center;
+        }
+
+        .results-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin-bottom: 28px;
+        }
+
+        .result-stat {
+            text-align: center;
+            padding: 16px;
+            background: var(--surface-container);
+            border-radius: var(--radius-md);
+        }
+
+        .result-stat-value {
+            font-size: 32px;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+        }
+
+        .result-stat-value.purple { color: var(--primary); }
+        .result-stat-value.green { color: var(--success); }
+
+        .result-stat-label {
+            font-size: 12px;
+            color: var(--text-muted);
+            font-weight: 500;
+            margin-top: 4px;
+        }
+
+        .modal-input {
+            width: 100%;
+            padding: 11px 14px;
+            border: 1.5px solid var(--border);
+            border-radius: var(--radius-sm);
+            font-size: 15px;
+            font-family: inherit;
+            color: var(--text-primary);
+            outline: none;
+            transition: all 0.2s ease;
+        }
+
+        .modal-input:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(99,102,241,0.12);
+        }
+
+        .modal-label {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 6px;
+        }
+
+        .modal-submit {
+            width: 100%;
+            padding: 12px;
+            background: var(--primary);
+            color: #fff;
+            border: none;
+            border-radius: var(--radius-sm);
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            font-family: inherit;
+            margin-top: 20px;
+            transition: all 0.15s ease;
+        }
+
+        .modal-submit:hover {
+            background: var(--primary-dark);
+        }
+
+        /* Toast & Loading */
         #errorToast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: var(--error);
+            color: #fff;
+            padding: 14px 20px;
+            border-radius: var(--radius-sm);
+            font-size: 14px;
+            font-weight: 500;
+            box-shadow: var(--shadow-lg);
+            z-index: 1000;
             opacity: 0;
             visibility: hidden;
+            transform: translateY(-8px);
             transition: all 0.3s ease;
         }
 
         #errorToast.visible {
             opacity: 1;
             visibility: visible;
-            transform: translateY(0) scale(1);
+            transform: translateY(0);
         }
 
-        /* Reading Agent styles */
-        #readingAgentPanel {
-            transition: all 0.3s ease;
+        #loadingOverlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(15,23,42,0.4);
+            backdrop-filter: blur(4px);
+            z-index: 1000;
+            display: none;
+            align-items: center;
+            justify-content: center;
         }
 
-        #readingAgentPanel.animate-pulse {
-            animation: pulse 0.5s ease-in-out;
+        #loadingOverlay:not(.hidden) {
+            display: flex;
         }
 
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.8; }
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid rgba(255,255,255,0.2);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
         }
 
-        /* Word highlighting styles */
-        .text-green-600 {
-            color: #059669;
+        @keyframes spin {
+            to { transform: rotate(360deg); }
         }
 
-        .text-red-600 {
-            color: #dc2626;
-            text-decoration: underline;
-        }
+        /* Responsive */
+        @media (max-width: 640px) {
+            .reading-topbar {
+                padding: 0 16px;
+            }
 
-        .bg-yellow-200 {
-            background-color: #fef08a;
-            padding: 2px 4px;
-            border-radius: 3px;
+            .reading-layout {
+                padding: 20px 16px;
+            }
+
+            .reading-content {
+                padding: 24px;
+            }
+
+            .reading-content #readingText {
+                font-size: 17px;
+            }
         }
     </style>
 </head>
 <body>
     <!-- Error Toast -->
-    <div id="errorToast" class="fixed top-4 right-4 bg-red-500 text-white px-6 py-3 rounded-lg shadow-lg transform transition-all duration-300 scale-0 z-50"></div>
-    
+    <div id="errorToast"></div>
+
     <!-- Loading Overlay -->
-    <div id="loadingOverlay" class="fixed inset-0 bg-gray-900 bg-opacity-50 hidden flex items-center justify-center z-50">
-        <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-white"></div>
+    <div id="loadingOverlay" class="hidden">
+        <div class="spinner"></div>
     </div>
 
-    <div class="reading-container">
-        <div class="reading-header">
-            <h1 class="text-3xl font-bold">Reading Session</h1>
-            <a href="dashboard.html" class="text-indigo-600 hover:text-indigo-700 underline">← Back to Dashboard</a>
+    <!-- Top Bar -->
+    <nav class="reading-topbar">
+        <div class="reading-topbar-left">
+            <a href="dashboard.html" class="back-link">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"></path><path d="M12 19l-7-7 7-7"></path></svg>
+                Dashboard
+            </a>
+            <span class="reading-topbar-title">Reading Session</span>
         </div>
-
-        <div class="progress-container">
-            <label class="block text-sm font-medium text-gray-700 mb-2">Reading Progress</label>
-            <div class="progress-bar">
-                <div id="readingProgress" class="progress" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
-            </div>
-            <div class="page-info">
-                <span id="pageNumber">0 / 0</span>
-            </div>
+        <div class="reading-topbar-right">
+            <div id="accuracy" class="accuracy-badge">Accuracy: 0%</div>
+            <span id="pageNumber" class="page-badge">0 / 0</span>
         </div>
+    </nav>
 
+    <!-- Progress Strip -->
+    <div class="reading-progress-strip">
+        <div id="readingProgress" class="reading-progress-fill" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+    </div>
+
+    <!-- Reading Area -->
+    <div class="reading-layout">
         <div id="readingContent" class="reading-content">
             <!-- Content will be loaded here -->
         </div>
 
-        <div class="controls">
-            <button id="prevPage" class="btn-secondary">← Previous Page</button>
-            <button id="toggleSpeech" class="btn-success">🎤 Start Speaking</button>
-            <button id="nextPage" class="btn-secondary">Next Page →</button>
-            <button id="finishReading" class="btn-primary">✓ Finish Reading</button>
-        </div>
-
-        <div class="mt-4 text-center">
-            <div id="accuracy" class="text-lg font-semibold text-indigo-600">
-                Accuracy: 0%
-            </div>
+        <div class="controls-bar">
+            <button id="prevPage" class="btn-control">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline;vertical-align:-2px;margin-right:4px"><path d="M19 12H5"></path><path d="M12 19l-7-7 7-7"></path></svg>
+                Previous
+            </button>
+            <button id="toggleSpeech" class="btn-mic">Start Speaking</button>
+            <button id="nextPage" class="btn-control">
+                Next
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline;vertical-align:-2px;margin-left:4px"><path d="M5 12h14"></path><path d="M12 5l7 7-7 7"></path></svg>
+            </button>
+            <button id="finishReading" class="btn-finish">Finish Reading</button>
         </div>
     </div>
 

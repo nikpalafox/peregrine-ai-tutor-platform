@@ -170,8 +170,8 @@ class ReadingSession {
                 // Update UI to show it stopped
                 const toggleBtn = document.querySelector('#toggleSpeech');
                 if (toggleBtn) {
-                    toggleBtn.textContent = '🎤 Start Reading';
-                    toggleBtn.className = 'bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700';
+                    toggleBtn.textContent = 'Start Speaking';
+                    toggleBtn.className = 'btn-mic';
                 }
                 this.isListening = false;
             }
@@ -247,43 +247,32 @@ class ReadingSession {
         // Add Reading Agent feedback panel
         const agentPanel = document.createElement('div');
         agentPanel.id = 'readingAgentPanel';
-        agentPanel.className = 'mt-6 bg-blue-50 border-l-4 border-blue-500 p-4 rounded-lg';
         agentPanel.innerHTML = `
-            <div class="flex items-start gap-3">
-                <div class="text-2xl">👩‍🏫</div>
-                <div class="flex-1">
-                    <h3 class="font-semibold text-blue-900 mb-2">Reading Teacher</h3>
-                    <p id="agentFeedback" class="text-blue-800 text-sm">Ready to help you read! Click "Start Reading" when you're ready.</p>
+            <div class="agent-row">
+                <div class="agent-avatar">&#x1F393;</div>
+                <div style="flex: 1;">
+                    <h3>Reading Teacher</h3>
+                    <p id="agentFeedback">Ready to help you read! Click "Start Speaking" when you're ready.</p>
                 </div>
             </div>
         `;
         container.appendChild(agentPanel);
 
-        // Add speech controls
-        const controls = document.createElement('div');
-        controls.className = 'mt-6 flex items-center justify-center gap-4 flex-wrap';
-        controls.innerHTML = `
-                        <button id="toggleSpeech" class="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700">
-                                🎤 Start Reading
-                        </button>
-                        <div id="accuracy" class="text-lg font-semibold">
-                                Accuracy: 0%
-                        </div>
-                `;
-        container.appendChild(controls);
-
-        // Wire up speech toggle
-        const toggleBtn = controls.querySelector('#toggleSpeech');
+        // Wire up the external speech toggle button from the controls bar
+        const toggleBtn = document.querySelector('#toggleSpeech');
         if (toggleBtn) {
-            toggleBtn.addEventListener('click', () => {
+            // Remove previous listeners by replacing element
+            const newToggle = toggleBtn.cloneNode(true);
+            toggleBtn.parentNode.replaceChild(newToggle, toggleBtn);
+            newToggle.addEventListener('click', () => {
                 if (this.isListening) {
                     this.stopListening();
-                    toggleBtn.textContent = 'Start Speaking';
-                    toggleBtn.className = 'bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700';
+                    newToggle.textContent = 'Start Speaking';
+                    newToggle.className = 'btn-mic';
                 } else {
                     this.startListening();
-                    toggleBtn.textContent = 'Stop Speaking';
-                    toggleBtn.className = 'bg-red-600 text-white px-6 py-3 rounded-lg hover:bg-red-700';
+                    newToggle.textContent = 'Stop Speaking';
+                    newToggle.className = 'btn-mic recording';
                 }
             });
         }
@@ -539,6 +528,9 @@ class ReadingSession {
         const pct = Math.round(((this.currentIndex + 1) / this.pages.length) * 100);
         bar.style.width = pct + '%';
         bar.setAttribute('aria-valuenow', pct);
+
+        const pageNumberEl = document.getElementById('pageNumber');
+        if (pageNumberEl) pageNumberEl.textContent = `${this.currentIndex + 1} / ${this.pages.length}`;
     }
 
     async finish() {
@@ -557,37 +549,33 @@ class ReadingSession {
 
         // Show results modal with accuracy
         const modalHTML = `
-                        <div class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center">
-                                <div class="bg-white p-8 rounded-lg shadow-xl max-w-md w-full">
-                                        <h3 class="text-2xl font-bold mb-6">Reading Results</h3>
-                    
-                                        <div class="grid grid-cols-2 gap-6 mb-6">
-                                                <div class="text-center">
-                                                        <div class="text-3xl font-bold text-indigo-600">${accuracy}%</div>
-                                                        <div class="text-sm text-gray-600">Reading Accuracy</div>
-                                                </div>
-                                                <div class="text-center">
-                                                        <div class="text-3xl font-bold text-green-600">${wpm}</div>
-                                                        <div class="text-sm text-gray-600">Words per Minute</div>
-                                                </div>
-                                        </div>
-
-                                        <div class="mb-6">
-                                                <label class="block text-sm font-medium text-gray-700 mb-2">
-                                                        How well did you understand the passage? (0-100)
-                                                </label>
-                                                <input type="number" id="comprehensionScore" 
-                                                             class="w-full p-2 border rounded-lg"
-                                                             min="0" max="100" step="1">
-                                        </div>
-
-                                        <button id="submitResults" 
-                                                        class="w-full bg-indigo-600 text-white py-2 px-4 rounded-lg hover:bg-indigo-700">
-                                                Submit Results
-                                        </button>
-                                </div>
+            <div class="modal-overlay">
+                <div class="modal-card">
+                    <h3>Reading Results</h3>
+                    <div class="results-grid">
+                        <div class="result-stat">
+                            <div class="result-stat-value purple">${accuracy}%</div>
+                            <div class="result-stat-label">Reading Accuracy</div>
                         </div>
-                `;
+                        <div class="result-stat">
+                            <div class="result-stat-value green">${wpm}</div>
+                            <div class="result-stat-label">Words per Minute</div>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="modal-label">
+                            How well did you understand the passage? (0-100)
+                        </label>
+                        <input type="number" id="comprehensionScore"
+                               class="modal-input"
+                               min="0" max="100" step="1" placeholder="Enter score">
+                    </div>
+                    <button id="submitResults" class="modal-submit">
+                        Submit Results
+                    </button>
+                </div>
+            </div>
+        `;
 
         // Add modal to page
         const modalContainer = document.createElement('div');

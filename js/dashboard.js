@@ -121,6 +121,11 @@ async function loadUserProfile(userId) {
         if (gradeEl) gradeEl.textContent = profile.grade_level || '-';
         const nameEl = document.getElementById('userName');
         if (nameEl) nameEl.textContent = profile.name || '';
+        const initialsEl = document.getElementById('userInitials');
+        if (initialsEl && profile.name) {
+            const parts = profile.name.trim().split(/\s+/);
+            initialsEl.textContent = parts.map(p => p[0]).join('').substring(0, 2).toUpperCase();
+        }
     } catch (err) {
         console.error('Failed to load profile', err);
         // Don't show error if it's a 401 - api.js will handle redirect
@@ -156,29 +161,37 @@ function displayReadingList(books) {
         console.warn('readingList container not found');
         return;
     }
-    
+
     container.innerHTML = '';
 
     if (!books || books.length === 0) {
-        container.innerHTML = '<p class="text-gray-500 col-span-full text-center py-8">No books available. Click "Generate New Chapter" to create one!</p>';
+        container.innerHTML = `
+            <div class="empty-state" style="grid-column: 1 / -1;">
+                <div class="empty-state-icon">&#x1F4DA;</div>
+                <div class="empty-state-title">No chapters yet</div>
+                <div class="empty-state-text">Click "New Chapter" to generate your first AI-powered reading chapter!</div>
+            </div>`;
         return;
     }
 
     books.forEach(book => {
         const card = document.createElement('div');
-        card.className = 'bg-white p-6 rounded-lg shadow-md';
-        
-        // Handle different possible book/chapter formats
+        card.className = 'book-card';
+
         const title = book.title || book.topic || 'Untitled Chapter';
-        const description = book.description || 
+        const description = book.description ||
                           (book.content ? book.content.substring(0, 150) + '...' : '') ||
                           'A custom reading chapter for you!';
-        
+        const progress = book.reading_progress || 0;
+
         card.innerHTML = `
-            <h4 class="text-lg font-semibold mb-2">${title}</h4>
-            <p class="text-gray-600 text-sm mb-4">${description}</p>
-            <button data-book-id="${book.id}" class="start-reading bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors w-full">
-                Start Reading
+            <div class="book-card-title">${title}</div>
+            <div class="book-card-desc">${description}</div>
+            <div class="book-card-progress">
+                <div class="book-card-progress-bar" style="width: ${progress}%"></div>
+            </div>
+            <button data-book-id="${book.id}" class="start-reading btn-read">
+                ${progress > 0 ? 'Continue Reading' : 'Start Reading'}
             </button>
         `;
         container.appendChild(card);
@@ -230,7 +243,7 @@ async function setupChapterGeneration(userId) {
         try {
             showLoading();
             generateBtn.disabled = true;
-            generateBtn.textContent = 'Generating...';
+            generateBtn.innerHTML = 'Generating...';
             
             console.log('Requesting chapter generation for topic:', topic);
             const chapter = await apiRequest('POST', '/generate-chapter', {
@@ -241,7 +254,7 @@ async function setupChapterGeneration(userId) {
             
             hideLoading();
             generateBtn.disabled = false;
-            generateBtn.textContent = 'Generate New Chapter';
+            generateBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg> New Chapter';
 
             console.log('Generated chapter response:', chapter); // Debug log
             
@@ -272,7 +285,7 @@ async function setupChapterGeneration(userId) {
         } catch (err) {
             console.error('Failed to generate chapter', err);
             generateBtn.disabled = false;
-            generateBtn.textContent = 'Generate New Chapter';
+            generateBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg> New Chapter';
             hideLoading();
             
             // Show detailed error message
@@ -318,26 +331,24 @@ function displayChapter(chapter) {
     }
 
     const card = document.createElement('div');
-    card.className = 'chapter-card bg-white p-6 rounded-lg shadow-md mb-4';
+    card.className = 'chapter-card';
     card.setAttribute('data-chapter-id', chapter.id);
-    
-    // Determine title - check various possible fields
+
     const title = chapter.title || chapter.topic || 'New Chapter';
     const description = chapter.description || chapter.content?.substring(0, 100) + '...' || 'A custom chapter just for you!';
-    
+
     card.innerHTML = `
-        <div class="flex justify-between items-start mb-4">
-            <div class="flex-1">
-                <h3 class="text-xl font-semibold mb-2">${title}</h3>
-                <p class="text-gray-600 text-sm">${description}</p>
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px;">
+            <div style="flex: 1;">
+                <div class="book-card-title">${title}</div>
+                <div class="book-card-desc">${description}</div>
             </div>
-            <span class="level-badge">New</span>
+            <span class="level-badge" style="flex-shrink: 0; margin-left: 12px;">New</span>
         </div>
-        <div class="progress-bar">
+        <div class="progress-bar" style="margin-bottom: 16px;">
             <div class="progress" style="width: 0%" aria-valuenow="0"></div>
         </div>
-        <button data-chapter-id="${chapter.id}" 
-                class="mt-4 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors w-full">
+        <button data-chapter-id="${chapter.id}" class="btn-read">
             Start Reading
         </button>
     `;

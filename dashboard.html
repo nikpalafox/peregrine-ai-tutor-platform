@@ -5,156 +5,558 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard - Peregrine AI Reading Platform</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
+        *, *::before, *::after { box-sizing: border-box; }
+
+        :root {
+            --primary: #6366f1;
+            --primary-dark: #4f46e5;
+            --primary-light: #818cf8;
+            --primary-bg: #eef2ff;
+            --surface: #ffffff;
+            --surface-dim: #f8fafc;
+            --surface-container: #f1f5f9;
+            --text-primary: #0f172a;
+            --text-secondary: #475569;
+            --text-muted: #94a3b8;
+            --border: #e2e8f0;
+            --error: #ef4444;
+            --success: #22c55e;
+            --success-bg: #f0fdf4;
+            --warning: #f59e0b;
+            --warning-bg: #fffbeb;
+            --radius-sm: 8px;
+            --radius-md: 12px;
+            --radius-lg: 16px;
+            --radius-xl: 24px;
+            --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+            --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.07), 0 2px 4px -2px rgba(0,0,0,0.05);
+            --shadow-lg: 0 10px 25px -3px rgba(0,0,0,0.08), 0 4px 10px -4px rgba(0,0,0,0.04);
+        }
+
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: #f8f9ff;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            background: var(--surface-dim);
             min-height: 100vh;
+            margin: 0;
+            -webkit-font-smoothing: antialiased;
         }
 
-        .dashboard {
+        /* Top Nav */
+        .topbar {
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            padding: 0 32px;
+            height: 64px;
             display: flex;
-            min-height: 100vh;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 50;
         }
 
-        .sidebar {
-            width: 320px;
-            background: white;
-            padding: 20px;
-            border-right: 1px solid #e0e0e0;
-            overflow-y: auto;
+        .topbar-brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-weight: 700;
+            font-size: 18px;
+            color: var(--text-primary);
+            letter-spacing: -0.01em;
         }
 
-        .main-content {
-            flex: 1;
-            padding: 20px;
-            overflow-y: auto;
+        .topbar-brand .brand-mark {
+            width: 36px;
+            height: 36px;
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            border-radius: var(--radius-sm);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            font-weight: 800;
+            font-size: 16px;
         }
 
-        .chapter-card {
-            background: white;
-            border-radius: 12px;
-            padding: 20px;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        .topbar-right {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .user-chip {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 6px 12px 6px 6px;
+            background: var(--surface-container);
+            border-radius: 100px;
+            font-size: 14px;
+            color: var(--text-primary);
+            font-weight: 500;
+        }
+
+        .user-chip .avatar {
+            width: 28px;
+            height: 28px;
+            background: linear-gradient(135deg, var(--primary), #8b5cf6);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        .btn-logout {
+            padding: 8px 16px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            background: var(--surface);
+            color: var(--text-secondary);
+            font-size: 13px;
+            font-weight: 500;
             cursor: pointer;
-            transition: transform 0.2s ease;
+            transition: all 0.15s ease;
+            font-family: inherit;
         }
 
-        .chapter-card:hover {
-            transform: translateY(-2px);
+        .btn-logout:hover {
+            background: var(--surface-container);
+            color: var(--error);
+            border-color: var(--error);
+        }
+
+        /* Main Layout */
+        .dashboard-layout {
+            display: grid;
+            grid-template-columns: 300px 1fr;
+            min-height: calc(100vh - 64px);
+        }
+
+        /* Sidebar */
+        .sidebar {
+            background: var(--surface);
+            border-right: 1px solid var(--border);
+            padding: 24px;
+            overflow-y: auto;
+        }
+
+        .sidebar-section {
+            margin-bottom: 28px;
+        }
+
+        .sidebar-section-title {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--text-muted);
+            margin-bottom: 12px;
+        }
+
+        .profile-card {
+            padding: 20px;
+            background: var(--surface-container);
+            border-radius: var(--radius-md);
+        }
+
+        .profile-name {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 4px;
+        }
+
+        .profile-meta {
+            font-size: 13px;
+            color: var(--text-muted);
+            margin-bottom: 12px;
         }
 
         .level-badge {
-            background: linear-gradient(135deg, #ffd700 0%, #ffa500 100%);
-            color: white;
-            padding: 8px 15px;
-            border-radius: 20px;
-            font-weight: bold;
             display: inline-flex;
             align-items: center;
-            gap: 5px;
-            font-size: 0.9em;
+            gap: 6px;
+            padding: 5px 12px;
+            background: var(--warning-bg);
+            color: #b45309;
+            border-radius: 100px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        /* Stat Cards */
+        .stat-card {
+            background: var(--surface-container);
+            border-radius: var(--radius-md);
+            padding: 16px;
+            margin-bottom: 8px;
+        }
+
+        .stat-card-label {
+            font-size: 12px;
+            color: var(--text-muted);
+            font-weight: 500;
+            margin-bottom: 4px;
+        }
+
+        .stat-card-value {
+            font-size: 28px;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+        }
+
+        .stat-card-value.purple { color: var(--primary); }
+        .stat-card-value.green { color: var(--success); }
+
+        /* Activity */
+        .activity-item {
+            padding: 12px 0;
+            border-bottom: 1px solid var(--border);
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        .activity-item:last-child {
+            border-bottom: none;
+        }
+
+        /* Main Content */
+        .main-content {
+            padding: 32px;
+            overflow-y: auto;
+        }
+
+        .main-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 28px;
+        }
+
+        .main-header h2 {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--text-primary);
+            letter-spacing: -0.02em;
+            margin: 0;
+        }
+
+        .btn-primary {
+            padding: 10px 20px;
+            background: var(--primary);
+            color: #fff;
+            border: none;
+            border-radius: var(--radius-sm);
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            font-family: inherit;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-primary:hover {
+            background: var(--primary-dark);
+            box-shadow: 0 4px 12px rgba(99,102,241,0.3);
+        }
+
+        .btn-primary:active {
+            transform: scale(0.98);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        /* Book Cards */
+        .books-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 20px;
+        }
+
+        .book-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            padding: 24px;
+            transition: all 0.2s ease;
+        }
+
+        .book-card:hover {
+            border-color: var(--primary-light);
+            box-shadow: var(--shadow-md);
+        }
+
+        .book-card-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 8px;
+            line-height: 1.3;
+        }
+
+        .book-card-desc {
+            font-size: 13px;
+            color: var(--text-secondary);
+            line-height: 1.5;
+            margin-bottom: 16px;
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        .book-card-progress {
+            background: var(--surface-container);
+            height: 6px;
+            border-radius: 3px;
+            overflow: hidden;
+            margin-bottom: 16px;
+        }
+
+        .book-card-progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, var(--primary), var(--primary-light));
+            border-radius: 3px;
+            transition: width 0.3s ease;
+        }
+
+        .btn-read {
+            width: 100%;
+            padding: 10px 16px;
+            border: 1.5px solid var(--primary);
+            background: transparent;
+            color: var(--primary);
+            border-radius: var(--radius-sm);
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            font-family: inherit;
+        }
+
+        .btn-read:hover {
+            background: var(--primary);
+            color: #fff;
+        }
+
+        /* Chapter card (for dynamically generated) */
+        .chapter-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            padding: 24px;
+            margin-bottom: 16px;
+            transition: all 0.2s ease;
+        }
+
+        .chapter-card:hover {
+            border-color: var(--primary-light);
+            box-shadow: var(--shadow-md);
         }
 
         .progress-bar {
-            background: #eee;
-            height: 8px;
-            border-radius: 4px;
-            margin: 10px 0;
+            background: var(--surface-container);
+            height: 6px;
+            border-radius: 3px;
             overflow: hidden;
         }
 
         .progress {
             height: 100%;
-            background: linear-gradient(90deg, #4CAF50 0%, #8BC34A 100%);
+            background: linear-gradient(90deg, var(--primary), var(--primary-light));
             transition: width 0.3s ease;
         }
 
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 20px;
-            margin: 20px 0;
-        }
-
-        .stat-card {
-            background: white;
-            border-radius: 12px;
-            padding: 20px;
+        /* Empty State */
+        .empty-state {
             text-align: center;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            padding: 64px 32px;
+            color: var(--text-muted);
         }
 
-        .btn-primary {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 12px 24px;
-            border-radius: 8px;
+        .empty-state-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+        }
+
+        .empty-state-title {
+            font-size: 18px;
             font-weight: 600;
-            cursor: pointer;
-            transition: transform 0.2s ease;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
         }
 
-        .btn-primary:hover {
-            transform: translateY(-2px);
+        .empty-state-text {
+            font-size: 14px;
+            max-width: 360px;
+            margin: 0 auto;
+        }
+
+        /* Toast & Loading */
+        #errorToast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 14px 20px;
+            border-radius: var(--radius-sm);
+            font-size: 14px;
+            font-weight: 500;
+            box-shadow: var(--shadow-lg);
+            z-index: 1000;
+            opacity: 0;
+            visibility: hidden;
+            transform: translateY(-8px);
+            transition: all 0.3s ease;
+            color: #fff;
+        }
+
+        #errorToast.visible {
+            opacity: 1;
+            visibility: visible;
+            transform: translateY(0);
+        }
+
+        #errorToast.bg-red-500 { background: var(--error); }
+        #errorToast.bg-green-500 { background: var(--success); }
+
+        #loadingOverlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(15,23,42,0.4);
+            backdrop-filter: blur(4px);
+            z-index: 1000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #loadingOverlay:not(.hidden) {
+            display: flex;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid rgba(255,255,255,0.2);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Responsive */
+        @media (max-width: 900px) {
+            .dashboard-layout {
+                grid-template-columns: 1fr;
+            }
+
+            .sidebar {
+                border-right: none;
+                border-bottom: 1px solid var(--border);
+                padding: 20px;
+            }
+
+            .topbar {
+                padding: 0 16px;
+            }
+
+            .main-content {
+                padding: 20px;
+            }
         }
     </style>
 </head>
 <body>
     <!-- Error Toast -->
-    <div id="errorToast" class="fixed top-4 right-4 bg-red-500 text-white px-6 py-3 rounded-lg shadow-lg transform transition-all duration-300 scale-0 z-50"></div>
-    
+    <div id="errorToast" class="bg-red-500"></div>
+
     <!-- Loading Overlay -->
-    <div id="loadingOverlay" class="fixed inset-0 bg-gray-900 bg-opacity-50 hidden flex items-center justify-center z-50">
-        <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-white"></div>
+    <div id="loadingOverlay" class="hidden">
+        <div class="spinner"></div>
     </div>
 
-    <div class="dashboard">
-        <div class="sidebar">
-            <div class="mb-6">
-                <h2 class="text-2xl font-bold mb-2">Welcome Back, <span id="userName">User</span>!</h2>
-                <p class="text-sm text-gray-600 mb-2" id="userEmail">user@example.com</p>
-                <p class="text-sm text-gray-600 mb-2">Grade: <span id="userGrade">-</span></p>
-                <div class="level-badge">
-                    <span>Level 1</span>
-                </div>
-                <button id="logoutBtn" class="mt-4 text-red-600 hover:text-red-700 underline">Logout</button>
-            </div>
-
-            <div class="stats-grid">
-                <div class="stat-card">
-                    <h3 class="text-lg font-semibold mb-2">Reading Streak</h3>
-                    <p class="text-3xl font-bold text-indigo-600">0 Days</p>
-                </div>
-                <div class="stat-card">
-                    <h3 class="text-lg font-semibold mb-2">Chapters Read</h3>
-                    <p class="text-3xl font-bold text-green-600">0</p>
-                </div>
-            </div>
-
-            <div class="mt-6">
-                <h3 class="text-xl font-semibold mb-4">Recent Activity</h3>
-                <div id="activity-container" class="space-y-4">
-                    <!-- Activity items will be added dynamically -->
-                </div>
-            </div>
+    <!-- Top Navigation -->
+    <nav class="topbar">
+        <div class="topbar-brand">
+            <div class="brand-mark">P</div>
+            Peregrine
         </div>
+        <div class="topbar-right">
+            <div class="user-chip">
+                <div class="avatar" id="userInitials">U</div>
+                <span id="userEmail">user@example.com</span>
+            </div>
+            <button id="logoutBtn" class="btn-logout">Sign Out</button>
+        </div>
+    </nav>
 
-        <div class="main-content">
-            <div class="flex justify-between items-center mb-6">
-                <h2 class="text-2xl font-bold">Your Reading Journey</h2>
-                <button id="generateChapterBtn" class="btn-primary">Generate New Chapter</button>
+    <div class="dashboard-layout">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-section">
+                <div class="sidebar-section-title">Profile</div>
+                <div class="profile-card">
+                    <div class="profile-name">Welcome, <span id="userName">User</span></div>
+                    <div class="profile-meta">Grade <span id="userGrade">-</span></div>
+                    <div class="level-badge">
+                        <span>&#x2B50;</span>
+                        <span>Level 1</span>
+                    </div>
+                </div>
             </div>
 
-            <div id="readingList" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-6">
+            <div class="sidebar-section">
+                <div class="sidebar-section-title">Stats</div>
+                <div class="stat-card">
+                    <div class="stat-card-label">Reading Streak</div>
+                    <div class="stat-card-value purple">0 <span style="font-size: 14px; font-weight: 500; color: var(--text-muted);">days</span></div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-card-label">Chapters Read</div>
+                    <div class="stat-card-value green">0</div>
+                </div>
+            </div>
+
+            <div class="sidebar-section">
+                <div class="sidebar-section-title">Recent Activity</div>
+                <div id="activity-container">
+                    <div class="activity-item" style="color: var(--text-muted); font-style: italic;">No recent activity</div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <div class="main-header">
+                <h2>Your Reading Journey</h2>
+                <button id="generateChapterBtn" class="btn-primary">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                    New Chapter
+                </button>
+            </div>
+
+            <div id="readingList" class="books-grid">
                 <!-- Books will be added dynamically -->
             </div>
-            
-            <div id="chapters-container" class="space-y-4">
+
+            <div id="chapters-container">
                 <!-- Chapters will be added dynamically -->
             </div>
-        </div>
+        </main>
     </div>
 
     <!-- Scripts -->
