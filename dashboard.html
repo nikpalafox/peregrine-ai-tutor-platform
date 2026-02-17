@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard - Peregrine AI Reading Platform</title>
+    <link rel="icon" type="image/png" href="assets/favicon.png">
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -71,14 +72,15 @@
         .topbar-brand .brand-mark {
             width: 36px;
             height: 36px;
-            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
             border-radius: var(--radius-sm);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: #fff;
-            font-weight: 800;
-            font-size: 16px;
+            overflow: hidden;
+            flex-shrink: 0;
+        }
+
+        .topbar-brand .brand-mark img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
         }
 
         .topbar-right {
@@ -614,7 +616,7 @@
     <!-- Top Navigation -->
     <nav class="topbar">
         <div class="topbar-brand">
-            <div class="brand-mark">P</div>
+            <div class="brand-mark"><img src="assets/logo.png" alt="Peregrine logo"></div>
             Peregrine
         </div>
         <div class="topbar-right">
