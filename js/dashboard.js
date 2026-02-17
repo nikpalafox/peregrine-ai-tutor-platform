@@ -234,11 +234,66 @@ async function setupChapterGeneration(userId) {
     }
     chapterGenerationSetup = true;
 
-    generateBtn.addEventListener('click', async () => {
-        const topic = prompt('What topic would you like to read about?');
-        if (!topic || !topic.trim()) {
+    generateBtn.addEventListener('click', () => {
+        showTopicModal(userId, generateBtn);
+    });
+}
+
+function showTopicModal(userId, generateBtn) {
+    // Create modal
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+    modal.innerHTML = `
+        <div class="modal-card">
+            <h3>Generate New Chapter</h3>
+            <p class="modal-desc">Enter a topic and we'll create a personalized reading chapter for you using AI.</p>
+            <label class="modal-label" for="topicInput">Topic</label>
+            <input type="text" id="topicInput" class="modal-input" placeholder="e.g. Space exploration, Dinosaurs, Ocean life..." autofocus>
+            <div class="modal-actions">
+                <button class="btn-cancel" id="modalCancel">Cancel</button>
+                <button class="btn-submit" id="modalSubmit">Generate</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+
+    const input = modal.querySelector('#topicInput');
+    const submitBtn = modal.querySelector('#modalSubmit');
+    const cancelBtn = modal.querySelector('#modalCancel');
+
+    // Focus input after animation
+    setTimeout(() => input.focus(), 50);
+
+    // Close on backdrop click
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+            modal.remove();
+        }
+    });
+
+    cancelBtn.addEventListener('click', () => modal.remove());
+
+    // Submit on Enter
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            submitBtn.click();
+        }
+        if (e.key === 'Escape') {
+            modal.remove();
+        }
+    });
+
+    submitBtn.addEventListener('click', async () => {
+        const topic = input.value.trim();
+        if (!topic) {
+            input.style.borderColor = 'var(--error)';
+            input.style.boxShadow = '0 0 0 3px rgba(239,68,68,0.12)';
+            input.focus();
             return;
         }
+
+        modal.remove();
 
         try {
             showLoading();
