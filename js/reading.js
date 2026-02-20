@@ -17,7 +17,7 @@ class ReadingSession {
         this.lastSpokenText = '';
         this.pauseStartTime = null;
         this.lastFeedbackTime = 0;
-        this.feedbackCooldown = 8000; // 8 seconds minimum between feedback requests
+        this.feedbackCooldown = 20000; // 20 seconds minimum between feedback requests
         this.currentTranscript = '';
         this.lastFeedbackCount = 0;
         this.lastUpdateTime = 0;
@@ -29,6 +29,7 @@ class ReadingSession {
         this.lastProgressIndex = 0; // Last word index where progress was made
         this.lastProgressTime = 0; // When last progress was made
         this.feedbackInFlight = false; // Prevent overlapping API calls
+        this.lastSpeechActivityTime = 0; // Last time any speech was detected
         this.tts = window.speechSynthesis; // Text-to-speech
         this.ttsVoice = null; // Will be set when voices load
         this.isSpeaking = false; // Track if TTS is currently speaking
@@ -50,105 +51,98 @@ class ReadingSession {
         this.recognition.onresult = (event) => {
             let interimTranscript = '';
             let finalTranscript = '';
-            
+
             for (let i = event.resultIndex; i < event.results.length; i++) {
                 const transcript = event.results[i][0].transcript;
                 if (event.results[i].isFinal) {
                     finalTranscript += transcript + ' ';
-                    // Add final words to spokenWords array
-                    const transcriptLower = transcript.trim().toLowerCase();
-                    const newWords = transcriptLower.split(/\s+/).filter(w => w.length > 0);
-                    if (newWords.length > 0) {
-                        this.spokenWords.push(...newWords);
-                        this.lastSpokenText += transcript + ' ';
-                    }
+                    this.lastSpokenText += transcript + ' ';
                 } else {
                     interimTranscript += transcript;
                 }
             }
-            
-            // Update current transcript for display (includes both final and interim)
-            this.currentTranscript = this.lastSpokenText + finalTranscript + interimTranscript;
-            
-            // Process interim results to extract words incrementally
-            // This allows real-time word tracking as students speak, not just after pauses
-            if (interimTranscript.trim() || finalTranscript.trim()) {
-                const fullTranscript = this.currentTranscript.toLowerCase();
-                const allWords = fullTranscript.split(/\s+/).filter(w => w.length > 0);
-                const expectedWords = this.expectedWords || [];
-                
-                // Match words from the full transcript to expected words in sequence
-                // This gives us real-time progress tracking
-                const matchedWords = [];
-                let transcriptIndex = 0;
-                
-                for (let expectedIndex = 0; expectedIndex < expectedWords.length && transcriptIndex < allWords.length; expectedIndex++) {
-                    const expectedWord = expectedWords[expectedIndex].replace(/[^a-z0-9]/g, '');
-                    
-                    // Look for a match in the remaining transcript
-                    let found = false;
-                    for (let i = transcriptIndex; i < allWords.length; i++) {
-                        const spokenWord = allWords[i].replace(/[^a-z0-9]/g, '');
-                        
-                        // Check for exact match or close match (for interim results)
-                        if (spokenWord === expectedWord || 
-                            (spokenWord.length >= 2 && expectedWord.startsWith(spokenWord.substring(0, Math.min(spokenWord.length, expectedWord.length)))) ||
-                            (expectedWord.length >= 2 && spokenWord.startsWith(expectedWord.substring(0, Math.min(expectedWord.length, spokenWord.length))))) {
-                            matchedWords.push(allWords[i]);
-                            transcriptIndex = i + 1;
+
+            // Build the full running transcript (final text + current interim)
+            this.currentTranscript = this.lastSpokenText + interimTranscript;
+
+            // --- Word matching against expected text ---
+            // Re-parse the FULL transcript every time so interim words
+            // are tracked in real-time and final words stay stable.
+            const fullTranscript = this.currentTranscript.toLowerCase();
+            const allSpoken = fullTranscript.split(/\s+/).filter(w => w.length > 0);
+            const expected = this.expectedWords || [];
+
+            const matched = [];
+            let tIdx = 0; // pointer into allSpoken
+
+            for (let eIdx = 0; eIdx < expected.length && tIdx < allSpoken.length; eIdx++) {
+                const expClean = expected[eIdx].replace(/[^a-z0-9]/g, '');
+                if (!expClean) { matched.push(''); continue; } // skip punctuation-only tokens
+
+                let found = false;
+                // Scan ahead at most 3 words in transcript to allow small mis-recognitions
+                const lookAhead = Math.min(tIdx + 4, allSpoken.length);
+                for (let s = tIdx; s < lookAhead; s++) {
+                    const spkClean = allSpoken[s].replace(/[^a-z0-9]/g, '');
+
+                    // Exact match
+                    if (spkClean === expClean) {
+                        matched.push(allSpoken[s]);
+                        tIdx = s + 1;
+                        found = true;
+                        break;
+                    }
+                    // Prefix match (interim partial words) — only if spoken is 3+ chars
+                    if (spkClean.length >= 3 && expClean.startsWith(spkClean)) {
+                        matched.push(allSpoken[s]);
+                        tIdx = s + 1;
+                        found = true;
+                        break;
+                    }
+                    // Close match: spoken is a slightly different form (e.g., "runnin" vs "running")
+                    if (spkClean.length >= 3 && expClean.length >= 3) {
+                        const minLen = Math.min(spkClean.length, expClean.length);
+                        const prefixMatch = spkClean.substring(0, minLen) === expClean.substring(0, minLen);
+                        if (prefixMatch && Math.abs(spkClean.length - expClean.length) <= 2) {
+                            matched.push(allSpoken[s]);
+                            tIdx = s + 1;
                             found = true;
                             break;
                         }
                     }
-                    
-                    // If no match found, stop tracking (student may have skipped or misread)
-                    if (!found) {
-                        break;
-                    }
                 }
-                
-                // Update spokenWords with matched words for real-time display
-                if (matchedWords.length > 0) {
-                    this.spokenWords = matchedWords;
-                }
+
+                if (!found) break; // Student hasn't reached this word yet
             }
-            
-            // Update display in real-time as words are detected
-            // But debounce to avoid excessive re-renders
+
+            // Only update spokenWords if we matched at least as many as before
+            // (prevents flickering when interim results temporarily shrink)
+            if (matched.length >= this.spokenWords.length) {
+                this.spokenWords = matched;
+            }
+
+            // --- UI updates (debounced) ---
             const now = Date.now();
-            const shouldUpdate = now - this.lastUpdateTime > this.updateDebounceDelay ||
-                                this.spokenWords.length !== this.lastSpokenWordsCount;
-            
-            if (shouldUpdate) {
+            if (now - this.lastUpdateTime > this.updateDebounceDelay ||
+                this.spokenWords.length !== this.lastSpokenWordsCount) {
                 this.updateAccuracyDisplay();
                 this.updateTranscriptDisplay();
                 this.updateWordHighlighting();
                 this.lastUpdateTime = now;
                 this.lastSpokenWordsCount = this.spokenWords.length;
             }
-            
-            // === STRUGGLE-ONLY FEEDBACK ===
-            // Only request feedback when the student is STUCK, not while reading smoothly.
-            // Track progress: if new words are being matched, the student is doing fine.
+
+            // --- Progress tracking for struggle detection ---
             if (this.spokenWords.length > this.lastProgressIndex) {
                 this.lastProgressIndex = this.spokenWords.length;
                 this.lastProgressTime = Date.now();
-                this.stuckWordIndex = -1; // Reset stuck tracking
-                this.pauseStartTime = null;
+                this.pauseStartTime = null; // student is making progress, reset pause
             }
 
-            // Detect pauses (no new speech activity)
-            if (interimTranscript.trim() === '' && finalTranscript.trim() === '' && this.isListening) {
-                if (!this.pauseStartTime) {
-                    this.pauseStartTime = Date.now();
-                }
-            } else if (finalTranscript.trim()) {
-                // Got new speech — check if progress was actually made
-                // (pauseStartTime stays if no new word matches above)
-                if (this.spokenWords.length <= this.lastProgressIndex) {
-                    // Student is speaking but NOT making progress (wrong words / repetition)
-                    if (!this.pauseStartTime) this.pauseStartTime = Date.now();
-                }
+            // Any speech activity at all resets the silence timer
+            if (interimTranscript.trim() || finalTranscript.trim()) {
+                this.pauseStartTime = null;
+                this.lastSpeechActivityTime = Date.now();
             }
         };
 
@@ -302,6 +296,7 @@ class ReadingSession {
             this.pauseStartTime = null;
             this.lastProgressIndex = 0;
             this.lastProgressTime = Date.now();
+            this.lastSpeechActivityTime = Date.now();
             this.feedbackInFlight = false;
             this.isSpeaking = false;
 
@@ -315,12 +310,11 @@ class ReadingSession {
                 }
             }
 
-            // Speak a short greeting
-            this.updateAgentFeedback("I'm listening! Start reading when you're ready.");
-            this.speakFeedback("I'm listening! Start reading when you're ready.");
+            // Show a text-only greeting (don't speak it — let the student start)
+            this.updateAgentFeedback("I'm listening! Start reading when you're ready. I'll help if you get stuck.");
 
-            // Start a periodic timer to check for struggles (every 2 seconds)
-            this._struggleTimer = setInterval(() => this.checkForStruggle(), 2000);
+            // Check for struggles periodically (every 3 seconds)
+            this._struggleTimer = setInterval(() => this.checkForStruggle(), 3000);
 
             try {
                 this.recognition.start();
@@ -350,10 +344,13 @@ class ReadingSession {
     
     /**
      * Check if the student needs help. Called on a timer, not on every speech event.
-     * Only triggers feedback when:
-     *   1. Student has been stuck (no progress) for 4+ seconds
-     *   2. Student has a long pause (no speech at all) for 5+ seconds
-     *   3. Minimum 8 seconds between any feedback
+     *
+     * Philosophy: The tutor should stay QUIET while the student reads. Only speak up when:
+     *   1. Student has gone completely silent for 10+ seconds (they may be stuck or lost)
+     *   2. Student hasn't made progress on a new word for 8+ seconds (stuck on a word)
+     *   3. Minimum 20 seconds between any feedback to avoid being annoying
+     *   4. Never triggers if the student hasn't spoken yet (they may still be getting ready)
+     *   5. Never triggers if fewer than 3 words have been read (still warming up)
      */
     checkForStruggle() {
         if (!this.isListening || this.feedbackInFlight || this.isSpeaking) return;
@@ -361,17 +358,21 @@ class ReadingSession {
         const now = Date.now();
         if (now - this.lastFeedbackTime < this.feedbackCooldown) return;
 
-        const timeSinceProgress = now - (this.lastProgressTime || now);
-        const timeSinceSpeech = this.pauseStartTime ? (now - this.pauseStartTime) : 0;
+        // Don't trigger if student hasn't really started reading yet
+        if (this.spokenWords.length < 3) return;
+
+        const timeSinceProgress = this.lastProgressTime > 0 ? (now - this.lastProgressTime) : 0;
+        // Use lastSpeechActivityTime for silence detection since onresult doesn't fire during true silence
+        const timeSinceSpeech = this.lastSpeechActivityTime ? (now - this.lastSpeechActivityTime) : 0;
 
         let reason = null;
 
-        // Case 1: Student has been silent for 5+ seconds while listening
-        if (timeSinceSpeech >= 5000 && this.spokenWords.length > 0) {
+        // Case 1: Complete silence for 10+ seconds (student stopped talking)
+        if (timeSinceSpeech >= 10000) {
             reason = 'long_pause';
         }
-        // Case 2: Student is speaking but stuck on a word (no new matches for 4s)
-        else if (timeSinceProgress >= 4000 && this.spokenWords.length > 0 && this.lastProgressTime > 0) {
+        // Case 2: Student is speaking but no new word matched for 8+ seconds
+        else if (timeSinceProgress >= 8000 && this.lastProgressTime > 0) {
             reason = 'stuck_word';
         }
 
