@@ -17,12 +17,21 @@ class ReadingSession {
         this.lastSpokenText = '';
         this.pauseStartTime = null;
         this.lastFeedbackTime = 0;
-        this.feedbackCooldown = 3000; // 3 seconds between feedback requests
-        this.currentTranscript = ''; // Track ongoing transcript
-        this.lastFeedbackCount = 0; // Track word count at last feedback
-        this.lastUpdateTime = 0; // Track last UI update time
-        this.updateDebounceDelay = 200; // Debounce UI updates to 200ms
-        this.lastSpokenWordsCount = 0; // Track last spoken words count to avoid unnecessary updates
+        this.feedbackCooldown = 8000; // 8 seconds minimum between feedback requests
+        this.currentTranscript = '';
+        this.lastFeedbackCount = 0;
+        this.lastUpdateTime = 0;
+        this.updateDebounceDelay = 200;
+        this.lastSpokenWordsCount = 0;
+        // Struggle detection
+        this.stuckWordIndex = -1; // Track if student is stuck on a word
+        this.stuckWordStartTime = 0; // When they got stuck
+        this.lastProgressIndex = 0; // Last word index where progress was made
+        this.lastProgressTime = 0; // When last progress was made
+        this.feedbackInFlight = false; // Prevent overlapping API calls
+        this.tts = window.speechSynthesis; // Text-to-speech
+        this.ttsVoice = null; // Will be set when voices load
+        this.isSpeaking = false; // Track if TTS is currently speaking
     }
 
     setupSpeechRecognition() {
@@ -118,30 +127,28 @@ class ReadingSession {
                 this.lastSpokenWordsCount = this.spokenWords.length;
             }
             
-            // Get feedback more frequently - on final results OR when we detect significant progress
-            const shouldGetFeedback = finalTranscript.trim() && 
-                (Date.now() - this.lastFeedbackTime) > this.feedbackCooldown;
-            
-            // Also get feedback when we've spoken a few words (every 3-5 words)
-            const wordsSinceLastFeedback = this.spokenWords.length - (this.lastFeedbackCount || 0);
-            const shouldGetIncrementalFeedback = wordsSinceLastFeedback >= 3 && 
-                (Date.now() - this.lastFeedbackTime) > 1500; // Shorter cooldown for incremental feedback
-            
-            if (shouldGetFeedback || shouldGetIncrementalFeedback) {
-                this.lastFeedbackCount = this.spokenWords.length;
-                this.getReadingFeedback();
+            // === STRUGGLE-ONLY FEEDBACK ===
+            // Only request feedback when the student is STUCK, not while reading smoothly.
+            // Track progress: if new words are being matched, the student is doing fine.
+            if (this.spokenWords.length > this.lastProgressIndex) {
+                this.lastProgressIndex = this.spokenWords.length;
+                this.lastProgressTime = Date.now();
+                this.stuckWordIndex = -1; // Reset stuck tracking
+                this.pauseStartTime = null;
             }
-            
-            // Detect pauses (no speech for a while)
+
+            // Detect pauses (no new speech activity)
             if (interimTranscript.trim() === '' && finalTranscript.trim() === '' && this.isListening) {
                 if (!this.pauseStartTime) {
                     this.pauseStartTime = Date.now();
-                } else if (Date.now() - this.pauseStartTime > 3000) {
-                    // 3 second pause detected
-                    this.handleStruggle('long_pause');
                 }
-            } else {
-                this.pauseStartTime = null;
+            } else if (finalTranscript.trim()) {
+                // Got new speech — check if progress was actually made
+                // (pauseStartTime stays if no new word matches above)
+                if (this.spokenWords.length <= this.lastProgressIndex) {
+                    // Student is speaking but NOT making progress (wrong words / repetition)
+                    if (!this.pauseStartTime) this.pauseStartTime = Date.now();
+                }
             }
         };
 
@@ -163,17 +170,22 @@ class ReadingSession {
         // Don't auto-restart - with continuous mode, it should keep running
         // Only restart manually when user clicks the button
         this.recognition.onend = () => {
-            // With continuous: true, onend should only fire on errors
-            // Don't auto-restart to prevent refresh loops
+            // If TTS is speaking, we intentionally stopped recognition — don't update UI
+            if (this.isSpeaking) return;
+
             if (this.isListening) {
                 console.log('Speech recognition ended unexpectedly');
-                // Update UI to show it stopped
                 const toggleBtn = document.querySelector('#toggleSpeech');
                 if (toggleBtn) {
                     toggleBtn.textContent = 'Start Speaking';
                     toggleBtn.className = 'btn-mic';
                 }
                 this.isListening = false;
+                // Clear struggle timer
+                if (this._struggleTimer) {
+                    clearInterval(this._struggleTimer);
+                    this._struggleTimer = null;
+                }
             }
         };
     }
@@ -288,7 +300,28 @@ class ReadingSession {
             this.currentTranscript = '';
             this.isListening = true;
             this.pauseStartTime = null;
-            this.updateAgentFeedback("I'm listening! Start reading when you're ready. Take your time with each word.");
+            this.lastProgressIndex = 0;
+            this.lastProgressTime = Date.now();
+            this.feedbackInFlight = false;
+            this.isSpeaking = false;
+
+            // Load TTS voices (must be done after user gesture)
+            if (this.tts) {
+                const voices = this.tts.getVoices();
+                if (voices.length > 0) {
+                    this.ttsVoice = voices.find(v => v.lang.startsWith('en') && v.name.includes('Samantha')) ||
+                                    voices.find(v => v.lang.startsWith('en-US') && !v.name.includes('Google')) ||
+                                    voices.find(v => v.lang.startsWith('en')) || null;
+                }
+            }
+
+            // Speak a short greeting
+            this.updateAgentFeedback("I'm listening! Start reading when you're ready.");
+            this.speakFeedback("I'm listening! Start reading when you're ready.");
+
+            // Start a periodic timer to check for struggles (every 2 seconds)
+            this._struggleTimer = setInterval(() => this.checkForStruggle(), 2000);
+
             try {
                 this.recognition.start();
             } catch (e) {
@@ -301,42 +334,80 @@ class ReadingSession {
         if (this.recognition) {
             this.isListening = false;
             this.pauseStartTime = null;
+            // Clear struggle timer
+            if (this._struggleTimer) {
+                clearInterval(this._struggleTimer);
+                this._struggleTimer = null;
+            }
+            // Stop TTS if speaking
+            if (this.tts) this.tts.cancel();
+            this.isSpeaking = false;
             try {
                 this.recognition.stop();
             } catch (e) {}
-            // Get final feedback
-            if (this.lastSpokenText.trim()) {
-                this.getReadingFeedback();
-            }
         }
     }
     
-    async getReadingFeedback() {
-        if (!this.studentId || !this.isListening) return;
-        
+    /**
+     * Check if the student needs help. Called on a timer, not on every speech event.
+     * Only triggers feedback when:
+     *   1. Student has been stuck (no progress) for 4+ seconds
+     *   2. Student has a long pause (no speech at all) for 5+ seconds
+     *   3. Minimum 8 seconds between any feedback
+     */
+    checkForStruggle() {
+        if (!this.isListening || this.feedbackInFlight || this.isSpeaking) return;
+
         const now = Date.now();
-        // Allow shorter cooldown for incremental feedback
-        const minCooldown = 1500; // 1.5 seconds minimum
-        if (now - this.lastFeedbackTime < minCooldown) return;
-        
+        if (now - this.lastFeedbackTime < this.feedbackCooldown) return;
+
+        const timeSinceProgress = now - (this.lastProgressTime || now);
+        const timeSinceSpeech = this.pauseStartTime ? (now - this.pauseStartTime) : 0;
+
+        let reason = null;
+
+        // Case 1: Student has been silent for 5+ seconds while listening
+        if (timeSinceSpeech >= 5000 && this.spokenWords.length > 0) {
+            reason = 'long_pause';
+        }
+        // Case 2: Student is speaking but stuck on a word (no new matches for 4s)
+        else if (timeSinceProgress >= 4000 && this.spokenWords.length > 0 && this.lastProgressTime > 0) {
+            reason = 'stuck_word';
+        }
+
+        if (reason) {
+            this.getReadingFeedback(reason);
+        }
+    }
+
+    async getReadingFeedback(reason) {
+        if (!this.studentId || this.feedbackInFlight) return;
+
+        this.feedbackInFlight = true;
+
         const currentPageText = this.pages[this.currentIndex] || '';
-        // Use the full transcript including interim results for more accurate feedback
         const spokenText = this.currentTranscript.trim() || this.lastSpokenText.trim();
-        
-        if (!spokenText) return;
-        
-        // Calculate current word index
+
+        if (!spokenText) {
+            this.feedbackInFlight = false;
+            return;
+        }
+
         const expectedWords = currentPageText.toLowerCase().split(/\s+/);
         const spokenWords = spokenText.toLowerCase().split(/\s+/);
-        const currentWordIndex = Math.min(spokenWords.length, expectedWords.length);
-        
-        // Detect struggle indicators
+        const currentWordIndex = Math.min(this.spokenWords.length, expectedWords.length);
+
+        // The word the student is stuck on
+        const stuckWord = expectedWords[currentWordIndex] || '';
+
         const struggleIndicators = {
-            long_pause: this.pauseStartTime && (now - this.pauseStartTime > 3000),
+            long_pause: reason === 'long_pause',
+            stuck_word: reason === 'stuck_word',
+            stuck_on: stuckWord,
             repetition: this.detectRepetition(spokenWords),
             hesitation: this.detectHesitation(spokenText)
         };
-        
+
         try {
             const feedback = await apiRequest('POST', '/reading/feedback', {
                 expected_text: currentPageText,
@@ -345,33 +416,82 @@ class ReadingSession {
                 current_word_index: currentWordIndex,
                 struggle_indicators: struggleIndicators
             });
-            
+
             if (feedback && feedback.feedback) {
                 this.updateAgentFeedback(feedback.feedback);
-                this.lastFeedbackTime = now;
-                
-                // Update accuracy if provided
+                this.speakFeedback(feedback.feedback);
+                this.lastFeedbackTime = Date.now();
+
                 if (feedback.accuracy !== undefined) {
                     this.currentAccuracy = feedback.accuracy;
                     this.updateAccuracyDisplay();
                 }
-                
-                // Highlight incorrect words
+
                 if (feedback.incorrect_words && feedback.incorrect_words.length > 0) {
                     this.highlightIncorrectWords(feedback.incorrect_words);
                 }
             }
         } catch (err) {
             console.error('Failed to get reading feedback', err);
-            // Don't show error - just continue
+        } finally {
+            this.feedbackInFlight = false;
         }
     }
-    
+
+    /**
+     * Speak feedback aloud using the Web Speech API (text-to-speech).
+     */
+    speakFeedback(text) {
+        if (!this.tts) return;
+
+        // Cancel any in-progress speech
+        this.tts.cancel();
+
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.rate = 0.95;
+        utterance.pitch = 1.05;
+        utterance.volume = 1.0;
+
+        // Pick a good English voice if available
+        if (!this.ttsVoice) {
+            const voices = this.tts.getVoices();
+            this.ttsVoice = voices.find(v => v.lang.startsWith('en') && v.name.includes('Samantha')) ||
+                            voices.find(v => v.lang.startsWith('en-US') && !v.name.includes('Google')) ||
+                            voices.find(v => v.lang.startsWith('en')) ||
+                            null;
+        }
+        if (this.ttsVoice) utterance.voice = this.ttsVoice;
+
+        // Pause speech recognition while tutor speaks to avoid feedback loop
+        utterance.onstart = () => {
+            this.isSpeaking = true;
+            if (this.recognition && this.isListening) {
+                try { this.recognition.stop(); } catch (e) {}
+            }
+        };
+
+        utterance.onend = () => {
+            this.isSpeaking = false;
+            // Resume listening after tutor finishes speaking
+            if (this.isListening && this.recognition) {
+                try { this.recognition.start(); } catch (e) {}
+            }
+        };
+
+        utterance.onerror = () => {
+            this.isSpeaking = false;
+            if (this.isListening && this.recognition) {
+                try { this.recognition.start(); } catch (e) {}
+            }
+        };
+
+        this.tts.speak(utterance);
+    }
+
     updateAgentFeedback(message) {
         const feedbackEl = document.getElementById('agentFeedback');
         if (feedbackEl) {
             feedbackEl.textContent = message;
-            // Animate the panel
             const panel = document.getElementById('readingAgentPanel');
             if (panel) {
                 panel.classList.add('animate-pulse');
@@ -461,10 +581,7 @@ class ReadingSession {
     }
     
     handleStruggle(type) {
-        // Provide immediate encouragement when struggle is detected
-        if (type === 'long_pause') {
-            this.updateAgentFeedback("Take your time! I'm here to help. Try sounding out the next word slowly.");
-        }
+        // Handled by checkForStruggle timer now
     }
 
     updateAccuracyDisplay() {

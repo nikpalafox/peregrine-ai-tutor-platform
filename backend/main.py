@@ -1467,43 +1467,109 @@ class BookGenerator:
     def __init__(self, student: Student):
         self.student = student
         
+    def _get_grade_spec(self, grade: int) -> dict:
+        """Return research-backed reading level specifications per grade."""
+        specs = {
+            1: {
+                "word_count": "50-120 words",
+                "sentence_length": "5-7 words per sentence",
+                "sentence_structure": "Use ONLY simple sentences (subject-verb or subject-verb-object). No compound or complex sentences.",
+                "vocabulary": "80%+ one-syllable CVC words (cat, dog, run, big, sit, hop). Only use common sight words from the Dolch/Fry first-100 list (the, and, is, was, he, she, it, said, have, look, see, can, will, did, get, not). Limit two-syllable words to 15-20% and only familiar ones (happy, little, funny, rabbit). NO three-syllable words.",
+                "style": "Use repetitive sentence patterns (same structure with one word changed). Short character names (Sam, Tom, Jan). Use dialogue only with 'said'. Each sentence = one idea. 60-70% of words should repeat throughout the passage. Write like an early reader decodable book.",
+                "flesch_kincaid": "Target Flesch-Kincaid grade level 0.5-1.5. Flesch Reading Ease 95-100.",
+                "lexile": "Target Lexile 190-400L.",
+                "max_tokens": 300,
+            },
+            2: {
+                "word_count": "100-200 words",
+                "sentence_length": "7-9 words per sentence",
+                "sentence_structure": "90% simple sentences. 10% compound sentences joined by 'and' or 'but'. No complex sentences.",
+                "vocabulary": "Introduce two-syllable words more freely (~20%). Still mostly one-syllable words. Use Dolch/Fry first-200 sight words. Limit three-syllable words to under 5%.",
+                "style": "Short paragraphs of 2-3 sentences. More descriptive but still concrete topics. Simple dialogue. Characters can have slightly longer names.",
+                "flesch_kincaid": "Target Flesch-Kincaid grade level 1.5-2.5. Flesch Reading Ease 90-100.",
+                "lexile": "Target Lexile 420-550L.",
+                "max_tokens": 400,
+            },
+            3: {
+                "word_count": "150-300 words",
+                "sentence_length": "8-10 words per sentence",
+                "sentence_structure": "70% simple, 25% compound, 5% complex sentences. Use conjunctions: and, but, so, or, because, when.",
+                "vocabulary": "More descriptive language. Three-syllable words ~10-15%. Content-area words introduced with context clues.",
+                "style": "Multiple paragraphs. Simple story arcs with a problem and resolution. More varied dialogue tags.",
+                "flesch_kincaid": "Target Flesch-Kincaid grade level 2.5-3.5. Flesch Reading Ease 90-95.",
+                "lexile": "Target Lexile 520-750L.",
+                "max_tokens": 500,
+            },
+            4: {
+                "word_count": "250-400 words",
+                "sentence_length": "10-12 words per sentence",
+                "sentence_structure": "50% simple, 35% compound, 15% complex sentences. Add subordinating conjunctions: because, when, if, after, before, although.",
+                "vocabulary": "Content-area vocabulary introduced naturally. Three-syllable words ~15-20%.",
+                "style": "Fuller narratives. Nonfiction elements can be incorporated. Richer descriptions.",
+                "flesch_kincaid": "Target Flesch-Kincaid grade level 3.5-4.5. Flesch Reading Ease 85-90.",
+                "lexile": "Target Lexile 740-940L.",
+                "max_tokens": 600,
+            },
+            5: {
+                "word_count": "300-500 words",
+                "sentence_length": "11-13 words per sentence",
+                "sentence_structure": "40% simple, 35% compound, 25% complex sentences. Relative clauses introduced.",
+                "vocabulary": "Richer vocabulary. Figurative language (similes, metaphors). Three-syllable words ~20-25%.",
+                "style": "Complex narratives with subplots. Informational text. Abstract themes introduced.",
+                "flesch_kincaid": "Target Flesch-Kincaid grade level 4.5-5.5. Flesch Reading Ease 80-90.",
+                "lexile": "Target Lexile 830-1010L.",
+                "max_tokens": 700,
+            },
+            6: {
+                "word_count": "400-700 words",
+                "sentence_length": "12-14 words per sentence",
+                "sentence_structure": "30% simple, 35% compound, 35% complex. Compound-complex sentences can appear.",
+                "vocabulary": "Sophisticated vocabulary. Abstract concepts. Three-syllable words ~25-30%.",
+                "style": "Extended passages. Multiple text types. Nuanced characters and themes.",
+                "flesch_kincaid": "Target Flesch-Kincaid grade level 5.5-6.5. Flesch Reading Ease 75-85.",
+                "lexile": "Target Lexile 925-1070L.",
+                "max_tokens": 800,
+            },
+        }
+        grade = max(1, min(grade, 6))
+        return specs[grade]
+
     async def generate_chapter(self, topic: str, chapter_number: int, difficulty_level: str = "auto") -> Dict:
         """Generate a custom chapter based on student interests"""
         try:
-            if difficulty_level == "auto":
-                if self.student.grade_level <= 3:
-                    difficulty = "simple sentences, basic vocabulary"
-                elif self.student.grade_level <= 6:
-                    difficulty = "medium complexity, grade-appropriate vocabulary"
-                elif self.student.grade_level <= 9:
-                    difficulty = "more complex sentences, expanded vocabulary"
-                else:
-                    difficulty = "advanced vocabulary and concepts"
-            else:
-                difficulty = difficulty_level
-                
+            spec = self._get_grade_spec(self.student.grade_level)
             interests_str = ", ".join(self.student.interests)
-            
-            system_prompt = f"""You are an expert children's book author creating engaging educational content for {self.student.name}, a {self.student.grade_level}th grade student who loves {interests_str}.
 
-Create a captivating chapter that:
-1. Uses {difficulty}
-2. Incorporates their interests: {interests_str}
-3. Is educational and teaches about: {topic}
-4. Is age-appropriate for grade {self.student.grade_level}
-5. Includes engaging characters and storylines
-6. Has a clear beginning, middle, and end
-7. Is approximately 300-500 words
+            system_prompt = f"""You are an expert children's reading content author. You write decodable, grade-appropriate reading passages.
 
-Make it fun, educational, and something they'd want to read more of!"""
+You are writing for {self.student.name}, a grade {self.student.grade_level} student.
 
-            prompt = f"""Please write Chapter {chapter_number} of a custom story for {self.student.name}.
+=== STRICT READING LEVEL RULES (you MUST follow these) ===
+WORD COUNT: {spec['word_count']}
+SENTENCE LENGTH: {spec['sentence_length']}
+SENTENCE STRUCTURE: {spec['sentence_structure']}
+VOCABULARY: {spec['vocabulary']}
+STYLE: {spec['style']}
+READABILITY: {spec['flesch_kincaid']} {spec['lexile']}
 
-Topic to teach: {topic}
-Student interests to incorporate: {interests_str}
-Grade level: {self.student.grade_level}
+=== CONTENT RULES ===
+- Topic to teach about: {topic}
+- Incorporate the student's interests where possible: {interests_str}
+- Must be age-appropriate for grade {self.student.grade_level}
+- Have a clear beginning, middle, and end
+- Make it engaging and fun
 
-The chapter should be engaging, educational, and perfectly tailored to this student. Include a compelling title for the chapter."""
+=== FORMAT ===
+- Start with a short title on the first line (just the title text, no "Title:" prefix)
+- Then a blank line
+- Then the story text
+- Do NOT include chapter numbers in the title
+
+IMPORTANT: The reading level constraints above are the HIGHEST PRIORITY. A grade 1 passage must read like an early reader decodable book. Do not exceed the grade level."""
+
+            prompt = f"""Write a reading passage about "{topic}" for a grade {self.student.grade_level} student.
+
+Remember: {spec['word_count']}, sentences of {spec['sentence_length']}, and strictly grade-appropriate vocabulary. The passage must be readable by a typical grade {self.student.grade_level} student reading aloud."""
 
             from openai import OpenAI
             client = OpenAI(api_key=OPENAI_API_KEY)
@@ -1514,8 +1580,8 @@ The chapter should be engaging, educational, and perfectly tailored to this stud
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": prompt}
                 ],
-                max_tokens=800,
-                temperature=0.8  # More creative for storytelling
+                max_tokens=spec.get('max_tokens', 600),
+                temperature=0.7
             )
             
             content = response.choices[0].message.content.strip()
@@ -2169,41 +2235,59 @@ async def get_reading_feedback(request: ReadingFeedbackRequest, db: Session = De
             if request.struggle_indicators.get("hesitation", False):
                 struggles.append("hesitation")
         
-        # Create prompt for AI reading tutor
-        prompt = f"""You are a patient and encouraging reading teacher helping a {student.grade_level}th grade student read aloud.
+        # Determine the word the student is stuck on
+        stuck_word = request.struggle_indicators.get("stuck_on", "") if request.struggle_indicators else ""
+        is_long_pause = request.struggle_indicators.get("long_pause", False) if request.struggle_indicators else False
+        is_stuck_on_word = request.struggle_indicators.get("stuck_word", False) if request.struggle_indicators else False
 
-The student is reading this text:
-"{request.expected_text}"
+        # Build a concise, spoken-aloud-friendly prompt
+        prompt = f"""You are a warm, patient reading teacher helping a grade {student.grade_level} student read aloud.
+Your response will be SPOKEN ALOUD to the student through text-to-speech, so keep it very short and conversational.
 
-They just read: "{request.spoken_text}"
+The student is reading: "{request.expected_text}"
 
-{'They struggled with: ' + ', '.join(struggles) if struggles else ''}
+They have read up to word {request.current_word_index} of {len(expected_words)}.
+"""
 
-Current position: word {request.current_word_index} of {len(expected_words)}
+        if is_stuck_on_word and stuck_word:
+            prompt += f"""
+The student is STUCK on the word: "{stuck_word}"
+Help them sound it out. Break it into parts or syllables. For example: "The next word is '{stuck_word}'. Let's sound it out together: {stuck_word}."
+"""
+        elif is_long_pause:
+            prompt += """
+The student has paused for a while. Gently encourage them to keep going. If they're near a word, help them with it.
+"""
+        elif incorrect_words:
+            prompt += f"""
+The student misread some words: {str(incorrect_words[:2])}
+Gently correct ONLY the most recent mistake. Help them sound out the correct word.
+"""
+        else:
+            prompt += """
+The student seems to need a little encouragement. Give brief praise and encourage them to continue.
+"""
 
-Incorrect words detected: {len(incorrect_words)}
-{('Incorrect words: ' + str(incorrect_words[:3])) if incorrect_words else 'All words correct so far!'}
-
-Please provide:
-1. Encouraging feedback (2-3 sentences)
-2. If they made mistakes, gently point out the word(s) and help them sound it out
-3. If they're struggling, offer a helpful tip
-4. Praise what they did well
-
-Be warm, patient, and supportive like a caring teacher. Keep it brief (3-4 sentences max)."""
+        prompt += """
+RULES:
+- Respond in 1-2 SHORT sentences only (this will be spoken aloud)
+- Use a warm, encouraging tone like talking to a child
+- Do NOT use bullet points, numbered lists, or quotation marks
+- If helping with a word, break it into sounds/syllables naturally
+- Never say "great job" if they are struggling — instead be helpful and gentle"""
 
         # Use OpenAI to generate feedback
         try:
             from openai import OpenAI
             client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-            
+
             response = client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[
-                    {"role": "system", "content": "You are a patient, encouraging reading teacher who helps students learn to read with kindness and support."},
+                    {"role": "system", "content": "You are a kind reading teacher. Your responses are spoken aloud to children, so be brief, warm, and clear. 1-2 sentences max."},
                     {"role": "user", "content": prompt}
                 ],
-                max_tokens=200,
+                max_tokens=100,
                 temperature=0.7
             )
             
