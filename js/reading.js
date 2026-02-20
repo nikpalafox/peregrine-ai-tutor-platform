@@ -32,7 +32,88 @@ class ReadingSession {
         this.lastSpeechActivityTime = 0; // Last time any speech was detected
         this.tts = window.speechSynthesis; // Text-to-speech
         this.ttsVoice = null; // Will be set when voices load
+        this.ttsVoiceReady = false; // Whether we've resolved the best voice
         this.isSpeaking = false; // Track if TTS is currently speaking
+
+        // Pre-load voices (Chrome loads them asynchronously)
+        this._initTTSVoices();
+    }
+
+    /**
+     * Initialize TTS voice selection.
+     * Chrome loads voices asynchronously, so we listen for the voiceschanged event.
+     * We rank voices by quality — preferring natural/premium voices that sound human.
+     */
+    _initTTSVoices() {
+        if (!this.tts) return;
+
+        const pickBestVoice = () => {
+            const voices = this.tts.getVoices();
+            if (!voices || voices.length === 0) return;
+
+            // Filter to English voices only
+            const enVoices = voices.filter(v => v.lang.startsWith('en'));
+            if (enVoices.length === 0) return;
+
+            // Score each voice — higher is better
+            const scored = enVoices.map(v => {
+                let score = 0;
+                const name = v.name.toLowerCase();
+
+                // Premium / Natural voices (Chrome on desktop/Android)
+                // These use neural TTS and sound very natural
+                if (name.includes('natural')) score += 100;
+                if (name.includes('premium')) score += 90;
+
+                // Google UK English Female is widely considered the best default
+                if (name.includes('google') && name.includes('female')) score += 60;
+                if (name.includes('google') && name.includes('uk')) score += 50;
+
+                // macOS high-quality voices
+                if (name.includes('samantha')) score += 70;  // macOS default, good quality
+                if (name.includes('karen')) score += 65;     // Australian, warm tone
+                if (name.includes('moira')) score += 60;     // Irish, gentle
+                if (name.includes('tessa')) score += 55;     // South African, clear
+                if (name.includes('fiona')) score += 55;     // Scottish, warm
+
+                // Windows good voices
+                if (name.includes('zira')) score += 50;      // Windows US female
+                if (name.includes('hazel')) score += 50;     // Windows UK female
+                if (name.includes('jenny')) score += 65;     // Windows 11 neural voice
+
+                // Prefer female voices for a warm teacher persona
+                if (name.includes('female')) score += 20;
+
+                // Prefer US/UK English
+                if (v.lang === 'en-US') score += 10;
+                if (v.lang === 'en-GB') score += 8;
+
+                // Slight penalty for very robotic-sounding ones
+                if (name.includes('espeak')) score -= 50;
+                if (name.includes('mbrola')) score -= 40;
+
+                return { voice: v, score };
+            });
+
+            // Sort by score descending, pick the best
+            scored.sort((a, b) => b.score - a.score);
+
+            this.ttsVoice = scored[0].voice;
+            this.ttsVoiceReady = true;
+            console.log('TTS voice selected:', this.ttsVoice.name, `(score: ${scored[0].score})`);
+        };
+
+        // Try immediately (works in Firefox/Safari)
+        pickBestVoice();
+
+        // Also listen for async load (Chrome)
+        if (this.tts.onvoiceschanged !== undefined) {
+            this.tts.onvoiceschanged = () => {
+                if (!this.ttsVoiceReady) {
+                    pickBestVoice();
+                }
+            };
+        }
     }
 
     setupSpeechRecognition() {
@@ -300,16 +381,6 @@ class ReadingSession {
             this.feedbackInFlight = false;
             this.isSpeaking = false;
 
-            // Load TTS voices (must be done after user gesture)
-            if (this.tts) {
-                const voices = this.tts.getVoices();
-                if (voices.length > 0) {
-                    this.ttsVoice = voices.find(v => v.lang.startsWith('en') && v.name.includes('Samantha')) ||
-                                    voices.find(v => v.lang.startsWith('en-US') && !v.name.includes('Google')) ||
-                                    voices.find(v => v.lang.startsWith('en')) || null;
-                }
-            }
-
             // Show a text-only greeting (don't speak it — let the student start)
             this.updateAgentFeedback("I'm listening! Start reading when you're ready. I'll help if you get stuck.");
 
@@ -441,6 +512,7 @@ class ReadingSession {
 
     /**
      * Speak feedback aloud using the Web Speech API (text-to-speech).
+     * Tuned for a warm, patient teacher voice talking to young children.
      */
     speakFeedback(text) {
         if (!this.tts) return;
@@ -449,19 +521,16 @@ class ReadingSession {
         this.tts.cancel();
 
         const utterance = new SpeechSynthesisUtterance(text);
-        utterance.rate = 0.95;
-        utterance.pitch = 1.05;
+
+        // Slow and warm — like a patient teacher talking to a child
+        utterance.rate = 0.88;   // Slightly slower than normal for clarity
+        utterance.pitch = 1.12;  // Slightly higher for warmth and friendliness
         utterance.volume = 1.0;
 
-        // Pick a good English voice if available
-        if (!this.ttsVoice) {
-            const voices = this.tts.getVoices();
-            this.ttsVoice = voices.find(v => v.lang.startsWith('en') && v.name.includes('Samantha')) ||
-                            voices.find(v => v.lang.startsWith('en-US') && !v.name.includes('Google')) ||
-                            voices.find(v => v.lang.startsWith('en')) ||
-                            null;
+        // Use the pre-selected best voice
+        if (this.ttsVoice) {
+            utterance.voice = this.ttsVoice;
         }
-        if (this.ttsVoice) utterance.voice = this.ttsVoice;
 
         // Pause speech recognition while tutor speaks to avoid feedback loop
         utterance.onstart = () => {
