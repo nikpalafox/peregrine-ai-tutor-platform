@@ -81,7 +81,7 @@ async function initDashboard() {
             // Only redirect if we're still on dashboard page
             const stillOnDashboard = window.location.pathname.includes('dashboard.html');
             if (stillOnDashboard) {
-                window.location.href = 'index.html';
+                window.location.href = 'login.html';
             }
         }
         return;
@@ -215,7 +215,7 @@ function handleLogout() {
     localStorage.removeItem('authToken');
     localStorage.removeItem('userEmail');
     localStorage.removeItem('userId');
-    window.location.href = 'index.html';
+    window.location.href = 'login.html';
 }
 
 const logoutBtn = document.getElementById('logoutBtn');

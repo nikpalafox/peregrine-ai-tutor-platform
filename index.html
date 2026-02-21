@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Peregrine AI Reading Platform</title>
+    <title>Peregrine - AI Reading Tutor for Kids</title>
     <link rel="icon" type="image/png" href="assets/favicon.png">
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -15,6 +15,7 @@
             --primary: #6366f1;
             --primary-dark: #4f46e5;
             --primary-light: #818cf8;
+            --primary-bg: #eef2ff;
             --surface: #ffffff;
             --surface-dim: #f8fafc;
             --surface-container: #f1f5f9;
@@ -22,9 +23,6 @@
             --text-secondary: #475569;
             --text-muted: #94a3b8;
             --border: #e2e8f0;
-            --border-focus: #6366f1;
-            --error: #ef4444;
-            --success: #22c55e;
             --radius-sm: 8px;
             --radius-md: 12px;
             --radius-lg: 16px;
@@ -37,202 +35,75 @@
 
         body {
             font-family: 'Inter', system-ui, -apple-system, sans-serif;
-            background: var(--surface-dim);
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
+            background: var(--surface);
             margin: 0;
+            color: var(--text-primary);
             -webkit-font-smoothing: antialiased;
         }
 
-        .auth-wrapper {
-            width: 100%;
-            max-width: 960px;
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            background: var(--surface);
-            border-radius: var(--radius-xl);
-            box-shadow: var(--shadow-xl);
-            overflow: hidden;
-            min-height: 580px;
-        }
-
-        .auth-brand {
-            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #a78bfa 100%);
-            padding: 48px;
+        /* ---- Nav ---- */
+        .nav {
             display: flex;
-            flex-direction: column;
-            justify-content: center;
-            position: relative;
-            overflow: hidden;
+            align-items: center;
+            justify-content: space-between;
+            max-width: 1120px;
+            margin: 0 auto;
+            padding: 20px 24px;
         }
 
-        .auth-brand::before {
-            content: '';
-            position: absolute;
-            top: -50%;
-            left: -50%;
-            width: 200%;
-            height: 200%;
-            background: radial-gradient(circle at 30% 70%, rgba(255,255,255,0.08) 0%, transparent 50%);
-            pointer-events: none;
-        }
-
-        .auth-brand .brand-icon {
-            width: 72px;
-            height: 72px;
-            margin-bottom: 32px;
-        }
-
-        .auth-brand .brand-icon img {
-            width: 100%;
-            height: 100%;
-            object-fit: contain;
-            border-radius: var(--radius-md);
-        }
-
-        .auth-brand h1 {
-            color: #fff;
-            font-size: 32px;
-            font-weight: 800;
-            line-height: 1.2;
-            margin: 0 0 16px 0;
-            letter-spacing: -0.02em;
-        }
-
-        .auth-brand p {
-            color: rgba(255,255,255,0.85);
-            font-size: 16px;
-            line-height: 1.6;
-            margin: 0 0 40px 0;
-        }
-
-        .brand-features {
-            list-style: none;
-            padding: 0;
-            margin: 0;
-            display: flex;
-            flex-direction: column;
-            gap: 16px;
-        }
-
-        .brand-features li {
+        .nav-brand {
             display: flex;
             align-items: center;
             gap: 12px;
-            color: rgba(255,255,255,0.9);
-            font-size: 14px;
-            font-weight: 500;
+            text-decoration: none;
         }
 
-        .brand-features li .feature-icon {
-            width: 32px;
-            height: 32px;
-            background: rgba(255,255,255,0.15);
-            border-radius: 8px;
+        .nav-brand img {
+            width: 40px;
+            height: 40px;
+            border-radius: var(--radius-sm);
+        }
+
+        .nav-brand span {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--text-primary);
+            letter-spacing: -0.02em;
+        }
+
+        .nav-actions {
             display: flex;
+            gap: 12px;
+        }
+
+        .btn {
+            display: inline-flex;
             align-items: center;
             justify-content: center;
-            font-size: 16px;
-            flex-shrink: 0;
-        }
-
-        .auth-form-panel {
-            padding: 48px;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-        }
-
-        .auth-tabs {
-            display: flex;
-            background: var(--surface-container);
+            padding: 10px 22px;
             border-radius: var(--radius-sm);
-            padding: 4px;
-            margin-bottom: 32px;
-        }
-
-        .auth-tab {
-            flex: 1;
-            padding: 10px 16px;
-            border: none;
-            background: transparent;
-            border-radius: 6px;
             font-size: 14px;
             font-weight: 600;
-            color: var(--text-secondary);
+            font-family: inherit;
             cursor: pointer;
             transition: all 0.2s ease;
+            text-decoration: none;
+            border: none;
         }
 
-        .auth-tab:hover {
+        .btn-ghost {
+            background: transparent;
+            color: var(--text-secondary);
+        }
+
+        .btn-ghost:hover {
+            background: var(--surface-container);
             color: var(--text-primary);
-        }
-
-        .auth-tab.active {
-            background: var(--surface);
-            color: var(--text-primary);
-            box-shadow: var(--shadow-sm);
-        }
-
-        .form-group {
-            margin-bottom: 20px;
-        }
-
-        .form-label {
-            display: block;
-            font-size: 13px;
-            font-weight: 600;
-            color: var(--text-primary);
-            margin-bottom: 6px;
-            letter-spacing: 0.01em;
-        }
-
-        .form-input {
-            width: 100%;
-            padding: 11px 14px;
-            border: 1.5px solid var(--border);
-            border-radius: var(--radius-sm);
-            font-size: 15px;
-            font-family: inherit;
-            color: var(--text-primary);
-            background: var(--surface);
-            transition: all 0.2s ease;
-            outline: none;
-        }
-
-        .form-input::placeholder {
-            color: var(--text-muted);
-        }
-
-        .form-input:focus {
-            border-color: var(--border-focus);
-            box-shadow: 0 0 0 3px rgba(99,102,241,0.12);
-        }
-
-        select.form-input {
-            appearance: none;
-            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
-            background-repeat: no-repeat;
-            background-position: right 12px center;
-            padding-right: 36px;
         }
 
         .btn-primary {
-            width: 100%;
-            padding: 12px 24px;
             background: var(--primary);
             color: #fff;
-            border: none;
-            border-radius: var(--radius-sm);
-            font-size: 15px;
-            font-weight: 600;
-            font-family: inherit;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            margin-top: 4px;
         }
 
         .btn-primary:hover {
@@ -244,187 +115,533 @@
             transform: scale(0.98);
         }
 
-        .error-message {
-            color: var(--error);
-            font-size: 13px;
-            margin-top: 8px;
-            display: none;
+        .btn-lg {
+            padding: 14px 32px;
+            font-size: 16px;
+            border-radius: var(--radius-md);
         }
 
-        .error-message.visible {
-            display: block;
+        .btn-outline {
+            background: transparent;
+            color: var(--primary);
+            border: 1.5px solid var(--border);
         }
 
-        /* Toast */
-        #errorToast {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            background: var(--error);
-            color: #fff;
-            padding: 14px 20px;
-            border-radius: var(--radius-sm);
-            font-size: 14px;
-            font-weight: 500;
-            box-shadow: var(--shadow-lg);
-            z-index: 1000;
-            opacity: 0;
-            visibility: hidden;
-            transform: translateY(-8px);
-            transition: all 0.3s ease;
+        .btn-outline:hover {
+            border-color: var(--primary);
+            background: var(--primary-bg);
         }
 
-        #errorToast.visible {
-            opacity: 1;
-            visibility: visible;
-            transform: translateY(0);
+        /* ---- Hero ---- */
+        .hero {
+            max-width: 1120px;
+            margin: 0 auto;
+            padding: 60px 24px 80px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 64px;
+            align-items: center;
         }
 
-        /* Loading */
-        #loadingOverlay {
-            position: fixed;
-            inset: 0;
-            background: rgba(15,23,42,0.4);
-            backdrop-filter: blur(4px);
-            z-index: 1000;
-            display: none;
+        .hero-content h1 {
+            font-size: 52px;
+            font-weight: 800;
+            line-height: 1.1;
+            letter-spacing: -0.03em;
+            margin: 0 0 20px 0;
+        }
+
+        .hero-content h1 .highlight {
+            background: linear-gradient(135deg, var(--primary) 0%, #8b5cf6 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .hero-content p {
+            font-size: 18px;
+            line-height: 1.7;
+            color: var(--text-secondary);
+            margin: 0 0 36px 0;
+        }
+
+        .hero-actions {
+            display: flex;
+            gap: 16px;
+            align-items: center;
+        }
+
+        .hero-visual {
+            position: relative;
+            display: flex;
             align-items: center;
             justify-content: center;
         }
 
-        #loadingOverlay:not(.hidden) {
+        .hero-card {
+            background: var(--surface);
+            border: 1.5px solid var(--border);
+            border-radius: var(--radius-xl);
+            padding: 40px;
+            box-shadow: var(--shadow-xl);
+            width: 100%;
+            max-width: 440px;
+        }
+
+        .hero-card-header {
             display: flex;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 24px;
         }
 
-        .spinner {
-            width: 40px;
-            height: 40px;
-            border: 3px solid rgba(255,255,255,0.2);
-            border-top-color: #fff;
+        .hero-card-avatar {
+            width: 52px;
+            height: 52px;
+            background: linear-gradient(135deg, var(--primary) 0%, #8b5cf6 100%);
+            border-radius: var(--radius-md);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+        }
+
+        .hero-card-name {
+            font-weight: 700;
+            font-size: 16px;
+        }
+
+        .hero-card-role {
+            font-size: 13px;
+            color: var(--text-muted);
+            margin-top: 2px;
+        }
+
+        .hero-card-text {
+            font-size: 18px;
+            line-height: 1.8;
+            margin-bottom: 20px;
+        }
+
+        .hero-card-text .word-green {
+            color: #16a34a;
+            font-weight: 600;
+        }
+
+        .hero-card-text .word-yellow {
+            background: #fef08a;
+            padding: 1px 4px;
+            border-radius: 4px;
+            font-weight: 600;
+        }
+
+        .hero-card-feedback {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            background: var(--primary-bg);
+            padding: 16px;
+            border-radius: var(--radius-md);
+        }
+
+        .hero-card-feedback-icon {
+            font-size: 20px;
+            flex-shrink: 0;
+            margin-top: 1px;
+        }
+
+        .hero-card-feedback p {
+            font-size: 14px;
+            line-height: 1.5;
+            color: var(--text-secondary);
+            margin: 0;
+        }
+
+        /* ---- Features ---- */
+        .features {
+            background: var(--surface-dim);
+            padding: 80px 24px;
+        }
+
+        .features-inner {
+            max-width: 1120px;
+            margin: 0 auto;
+        }
+
+        .section-label {
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--primary);
+            margin: 0 0 12px 0;
+        }
+
+        .section-title {
+            font-size: 36px;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            margin: 0 0 16px 0;
+            line-height: 1.2;
+        }
+
+        .section-subtitle {
+            font-size: 17px;
+            color: var(--text-secondary);
+            line-height: 1.6;
+            margin: 0 0 48px 0;
+            max-width: 560px;
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 24px;
+        }
+
+        .feature-card {
+            background: var(--surface);
+            border: 1.5px solid var(--border);
+            border-radius: var(--radius-lg);
+            padding: 32px;
+            transition: all 0.2s ease;
+        }
+
+        .feature-card:hover {
+            border-color: var(--primary-light);
+            box-shadow: var(--shadow-md);
+        }
+
+        .feature-icon {
+            width: 48px;
+            height: 48px;
+            background: var(--primary-bg);
+            border-radius: var(--radius-md);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+            margin-bottom: 20px;
+        }
+
+        .feature-card h3 {
+            font-size: 17px;
+            font-weight: 700;
+            margin: 0 0 10px 0;
+        }
+
+        .feature-card p {
+            font-size: 14px;
+            line-height: 1.65;
+            color: var(--text-secondary);
+            margin: 0;
+        }
+
+        /* ---- How It Works ---- */
+        .how-it-works {
+            padding: 80px 24px;
+            max-width: 1120px;
+            margin: 0 auto;
+        }
+
+        .steps {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 32px;
+            margin-top: 48px;
+        }
+
+        .step {
+            text-align: center;
+        }
+
+        .step-number {
+            width: 56px;
+            height: 56px;
+            background: linear-gradient(135deg, var(--primary) 0%, #8b5cf6 100%);
+            color: #fff;
+            font-size: 22px;
+            font-weight: 800;
             border-radius: 50%;
-            animation: spin 0.7s linear infinite;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 20px;
         }
 
-        @keyframes spin {
-            to { transform: rotate(360deg); }
+        .step h3 {
+            font-size: 17px;
+            font-weight: 700;
+            margin: 0 0 10px 0;
         }
 
-        /* Responsive */
-        @media (max-width: 768px) {
-            .auth-wrapper {
+        .step p {
+            font-size: 14px;
+            line-height: 1.65;
+            color: var(--text-secondary);
+            margin: 0;
+            max-width: 280px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        /* ---- CTA ---- */
+        .cta {
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #a78bfa 100%);
+            padding: 80px 24px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .cta::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle at 30% 70%, rgba(255,255,255,0.08) 0%, transparent 50%);
+            pointer-events: none;
+        }
+
+        .cta-inner {
+            max-width: 600px;
+            margin: 0 auto;
+            position: relative;
+        }
+
+        .cta h2 {
+            font-size: 36px;
+            font-weight: 800;
+            color: #fff;
+            margin: 0 0 16px 0;
+            letter-spacing: -0.02em;
+        }
+
+        .cta p {
+            font-size: 17px;
+            color: rgba(255,255,255,0.85);
+            line-height: 1.6;
+            margin: 0 0 36px 0;
+        }
+
+        .btn-white {
+            background: #fff;
+            color: var(--primary);
+            font-weight: 700;
+        }
+
+        .btn-white:hover {
+            background: #f8fafc;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+        }
+
+        /* ---- Footer ---- */
+        .footer {
+            padding: 32px 24px;
+            text-align: center;
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+
+        /* ---- Responsive ---- */
+        @media (max-width: 900px) {
+            .hero {
                 grid-template-columns: 1fr;
-                max-width: 440px;
+                gap: 40px;
+                padding: 40px 24px 60px;
+                text-align: center;
             }
 
-            .auth-brand {
-                padding: 32px;
-                min-height: auto;
+            .hero-content h1 {
+                font-size: 36px;
             }
 
-            .auth-brand h1 {
-                font-size: 24px;
+            .hero-actions {
+                justify-content: center;
             }
 
-            .brand-features {
-                display: none;
+            .hero-visual {
+                order: -1;
             }
 
-            .auth-form-panel {
-                padding: 32px;
+            .hero-card {
+                max-width: 380px;
+                margin: 0 auto;
+            }
+
+            .features-grid {
+                grid-template-columns: 1fr;
+                gap: 16px;
+            }
+
+            .steps {
+                grid-template-columns: 1fr;
+                gap: 40px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .hero-content h1 {
+                font-size: 28px;
+            }
+
+            .hero-actions {
+                flex-direction: column;
+            }
+
+            .hero-actions .btn {
+                width: 100%;
+            }
+
+            .section-title {
+                font-size: 28px;
+            }
+
+            .cta h2 {
+                font-size: 28px;
             }
         }
     </style>
 </head>
 <body>
-    <!-- Error Toast -->
-    <div id="errorToast"></div>
 
-    <!-- Loading Overlay -->
-    <div id="loadingOverlay" class="hidden">
-        <div class="spinner"></div>
-    </div>
-
-    <div class="auth-wrapper">
-        <!-- Brand Panel -->
-        <div class="auth-brand">
-            <div class="brand-icon"><img src="assets/logo.png" alt="Peregrine logo"></div>
-            <h1>Peregrine AI Reading Platform</h1>
-            <p>An intelligent reading companion that helps students improve fluency, accuracy, and comprehension through AI-powered feedback.</p>
-            <ul class="brand-features">
-                <li>
-                    <span class="feature-icon">&#x1F3A4;</span>
-                    Voice-powered reading sessions
-                </li>
-                <li>
-                    <span class="feature-icon">&#x1F4CA;</span>
-                    Real-time accuracy tracking
-                </li>
-                <li>
-                    <span class="feature-icon">&#x1F4DA;</span>
-                    AI-generated reading content
-                </li>
-                <li>
-                    <span class="feature-icon">&#x1F3C6;</span>
-                    Gamified learning progress
-                </li>
-            </ul>
+    <!-- Nav -->
+    <nav class="nav">
+        <a href="index.html" class="nav-brand">
+            <img src="assets/logo.png" alt="Peregrine">
+            <span>Peregrine</span>
+        </a>
+        <div class="nav-actions">
+            <a href="login.html" class="btn btn-ghost">Sign In</a>
+            <a href="login.html" class="btn btn-primary" onclick="localStorage.setItem('showRegister','1')">Get Started</a>
         </div>
+    </nav>
 
-        <!-- Form Panel -->
-        <div class="auth-form-panel">
-            <div class="auth-tabs" id="auth-toggle">
-                <button onclick="showLogin()" class="auth-tab active">Sign In</button>
-                <button onclick="showRegister()" class="auth-tab">Create Account</button>
+    <!-- Hero -->
+    <section class="hero">
+        <div class="hero-content">
+            <h1>Your child's <span class="highlight">AI reading tutor</span></h1>
+            <p>Peregrine listens as your child reads aloud, tracks every word in real time, and gives gentle feedback when they need help. Built for grades 1-6.</p>
+            <div class="hero-actions">
+                <a href="login.html" class="btn btn-primary btn-lg" onclick="localStorage.setItem('showRegister','1')">Create Free Account</a>
+                <a href="#features" class="btn btn-outline btn-lg">Learn More</a>
             </div>
-
-            <!-- Login Form -->
-            <form id="login-form" onsubmit="handleLogin(event)">
-                <div class="form-group">
-                    <label class="form-label" for="login-email">Email</label>
-                    <input type="email" id="login-email" class="form-input" placeholder="you@example.com" required>
-                </div>
-                <div class="form-group">
-                    <label class="form-label" for="login-password">Password</label>
-                    <input type="password" id="login-password" class="form-input" placeholder="Enter your password" required>
-                </div>
-                <button type="submit" class="btn-primary">Sign In</button>
-                <div id="login-error" class="error-message"></div>
-            </form>
-
-            <!-- Register Form -->
-            <form id="register-form" onsubmit="handleRegister(event)" style="display: none;">
-                <div class="form-group">
-                    <label class="form-label" for="register-name">Full Name</label>
-                    <input type="text" id="register-name" class="form-input" placeholder="Your full name" required>
-                </div>
-                <div class="form-group">
-                    <label class="form-label" for="register-email">Email</label>
-                    <input type="email" id="register-email" class="form-input" placeholder="you@example.com" required>
-                </div>
-                <div class="form-group">
-                    <label class="form-label" for="register-password">Password</label>
-                    <input type="password" id="register-password" class="form-input" placeholder="Create a password" required>
-                </div>
-                <div class="form-group">
-                    <label class="form-label" for="register-grade">Grade Level</label>
-                    <select id="register-grade" class="form-input" required>
-                        <option value="">Select your grade</option>
-                        <option value="1">Grade 1</option>
-                        <option value="2">Grade 2</option>
-                        <option value="3">Grade 3</option>
-                        <option value="4">Grade 4</option>
-                        <option value="5">Grade 5</option>
-                        <option value="6">Grade 6</option>
-                    </select>
-                </div>
-                <button type="submit" class="btn-primary">Create Account</button>
-                <div id="register-error" class="error-message"></div>
-            </form>
         </div>
-    </div>
+        <div class="hero-visual">
+            <div class="hero-card">
+                <div class="hero-card-header">
+                    <div class="hero-card-avatar">&#x1F393;</div>
+                    <div>
+                        <div class="hero-card-name">Reading Session</div>
+                        <div class="hero-card-role">Grade 2 &middot; Chapter 1</div>
+                    </div>
+                </div>
+                <div class="hero-card-text">
+                    <span class="word-green">The</span>
+                    <span class="word-green">little</span>
+                    <span class="word-green">fox</span>
+                    <span class="word-green">ran</span>
+                    <span class="word-yellow">through</span>
+                    the tall green grass.
+                </div>
+                <div class="hero-card-feedback">
+                    <span class="hero-card-feedback-icon">&#x1F4AC;</span>
+                    <p>Great job reading! The next word sounds like "throo." Give it a try!</p>
+                </div>
+            </div>
+        </div>
+    </section>
 
-    <!-- Scripts -->
-    <script src="js/api.js"></script>
-    <script src="js/auth.js"></script>
+    <!-- Features -->
+    <section class="features" id="features">
+        <div class="features-inner">
+            <p class="section-label">Features</p>
+            <h2 class="section-title">Everything a young reader needs</h2>
+            <p class="section-subtitle">Peregrine combines speech recognition, AI-generated stories, and a patient tutor to create a reading experience that grows with your child.</p>
+
+            <div class="features-grid">
+                <div class="feature-card">
+                    <div class="feature-icon">&#x1F3A4;</div>
+                    <h3>Voice-Powered Reading</h3>
+                    <p>Students read aloud and Peregrine listens in real time, tracking each word as they go. Words turn green as they read, giving instant positive reinforcement.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">&#x1F9E0;</div>
+                    <h3>AI Reading Tutor</h3>
+                    <p>A patient, spoken tutor waits quietly while the student reads. When they pause or get stuck on a word, the tutor gently helps with pronunciation and encouragement.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">&#x1F4DA;</div>
+                    <h3>Grade-Level Stories</h3>
+                    <p>AI-generated reading content is tailored to each grade level using research-backed reading standards, from simple sight words in Grade 1 to complex narratives in Grade 6.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">&#x1F4CA;</div>
+                    <h3>Accuracy Tracking</h3>
+                    <p>Every reading session tracks accuracy and words-per-minute. Students and parents can see progress over time and identify areas for improvement.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">&#x1F4D6;</div>
+                    <h3>Personalized Library</h3>
+                    <p>Students build their own library of books across topics they love. Each book is generated at their reading level with multiple chapters to keep them engaged.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">&#x1F3C6;</div>
+                    <h3>Built for Kids</h3>
+                    <p>A friendly, encouraging interface designed for elementary students. No red marks or harsh corrections, just green words and a helpful tutor voice.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- How It Works -->
+    <section class="how-it-works" id="how-it-works">
+        <p class="section-label">How It Works</p>
+        <h2 class="section-title">Start reading in three steps</h2>
+        <p class="section-subtitle">Getting started takes less than a minute. No downloads, no apps to install.</p>
+
+        <div class="steps">
+            <div class="step">
+                <div class="step-number">1</div>
+                <h3>Create an Account</h3>
+                <p>Sign up with a name, email, and your child's grade level. It's free to get started.</p>
+            </div>
+            <div class="step">
+                <div class="step-number">2</div>
+                <h3>Pick a Book</h3>
+                <p>Choose a topic your child is interested in and Peregrine generates a book at exactly their reading level.</p>
+            </div>
+            <div class="step">
+                <div class="step-number">3</div>
+                <h3>Read Aloud</h3>
+                <p>Your child reads into the microphone while the AI tutor follows along, highlights words, and helps when needed.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- CTA -->
+    <section class="cta">
+        <div class="cta-inner">
+            <h2>Ready to help your child read?</h2>
+            <p>Join Peregrine and give your child a patient, always-available reading tutor that helps them build confidence one word at a time.</p>
+            <a href="login.html" class="btn btn-white btn-lg" onclick="localStorage.setItem('showRegister','1')">Get Started for Free</a>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        &copy; 2025 Peregrine AI Reading Platform
+    </footer>
+
+    <script>
+        // If user is already logged in, redirect to dashboard
+        const token = localStorage.getItem('authToken');
+        const userId = localStorage.getItem('userId');
+        if (token && userId) {
+            window.location.href = 'dashboard.html';
+        }
+    </script>
 </body>
 </html>

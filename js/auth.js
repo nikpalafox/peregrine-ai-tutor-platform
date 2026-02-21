@@ -97,6 +97,7 @@ async function handleRegister(event) {
 function handleLogout() {
     localStorage.removeItem('authToken');
     localStorage.removeItem('userEmail');
+    localStorage.removeItem('userId');
     window.location.href = 'index.html';
 }
 
@@ -149,11 +150,9 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
     }
     
-    // Check if we're on the login page (index.html) - be very explicit
+    // Check if we're on the login page (login.html)
     const currentPath = window.location.pathname;
-    const isLoginPage = currentPath.includes('index.html') || 
-                       (currentPath.endsWith('/') && !currentPath.includes('dashboard') && !currentPath.includes('reading')) ||
-                       (currentPath === '/' || currentPath.endsWith('/index.html'));
+    const isLoginPage = currentPath.includes('login.html');
     
     // Only check for redirect if we're actually on the login page
     if (isLoginPage) {
@@ -186,7 +185,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 
                 // Double-check we're still on login page before redirecting
-                const stillOnLogin = window.location.pathname.includes('index.html') || 
+                const stillOnLogin = window.location.pathname.includes('login.html') || 
                                     window.location.pathname.endsWith('/');
                 if (stillOnLogin) {
                     // Set redirect flag and redirect
@@ -197,7 +196,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         sessionStorage.setItem('redirecting', 'true');
                         setTimeout(() => {
                             // Triple-check we're still on login page
-                            const finalCheck = window.location.pathname.includes('index.html') || 
+                            const finalCheck = window.location.pathname.includes('login.html') || 
                                              window.location.pathname.endsWith('/');
                             if (finalCheck) {
                                 window.location.href = 'dashboard.html';
@@ -215,5 +214,11 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
     
-    showLogin();
+    // Check if homepage sent user here to register
+    if (localStorage.getItem('showRegister')) {
+        localStorage.removeItem('showRegister');
+        showRegister();
+    } else {
+        showLogin();
+    }
 });

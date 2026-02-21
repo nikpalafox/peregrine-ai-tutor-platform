@@ -45,9 +45,7 @@ async function apiRequest(method, endpoint, data = null) {
                 localStorage.removeItem('userId');
                 // Only redirect if we're not already on the login page and not already redirecting
                 const currentPath = window.location.pathname;
-                const isLoginPage = currentPath.includes('index.html') || 
-                                   currentPath.endsWith('/') ||
-                                   (!currentPath.includes('dashboard') && !currentPath.includes('reading'));
+                const isLoginPage = currentPath.includes('login.html') || currentPath.includes('index.html') || currentPath.endsWith('/');
                 
                 if (!isLoginPage && !sessionStorage.getItem('redirecting')) {
                     sessionStorage.setItem('redirecting', 'true');
@@ -55,11 +53,11 @@ async function apiRequest(method, endpoint, data = null) {
                     setTimeout(() => {
                         // Double-check we're still not on login page
                         const newPath = window.location.pathname;
-                        const stillNotLogin = !newPath.includes('index.html') && 
+                        const stillNotLogin = !newPath.includes('login.html') && 
                                             !newPath.endsWith('/') &&
                                             (newPath.includes('dashboard') || newPath.includes('reading'));
                         if (stillNotLogin) {
-                            window.location.href = 'index.html';
+                            window.location.href = 'login.html';
                         } else {
                             sessionStorage.removeItem('redirecting');
                         }

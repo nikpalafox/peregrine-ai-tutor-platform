@@ -902,7 +902,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     const token = localStorage.getItem('authToken');
     if (!token) {
-        window.location.href = 'index.html';
+        window.location.href = 'login.html';
         return;
     }
 
