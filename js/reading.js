@@ -117,91 +117,64 @@ class ReadingSession {
     }
 
     /**
-     * Check if two cleaned words are a "good enough" match.
-     * Very generous — for young students, we want every correctly-read word
-     * to turn green. Speech recognition is imperfect, so we err on the side
-     * of accepting the word.
+     * Check if a spoken word matches an expected word.
+     * Balanced: generous enough to handle speech recognition quirks,
+     * but strict enough that unrelated words don't accidentally match.
      */
     _wordsMatch(spkClean, expClean) {
         if (!spkClean || !expClean) return false;
 
-        // Exact match — always good
+        // Exact match
         if (spkClean === expClean) return true;
 
         // --- Short expected words (1-2 chars): "a", "I", "is", "he", etc. ---
-        // Speech recognition frequently mangles these. Accept almost anything reasonable.
         if (expClean.length <= 2) {
-            // Spoken starts with expected ("is" ➜ "isn't")
-            if (spkClean.startsWith(expClean)) return true;
-            // Expected starts with spoken ("a" matches spoken "a" from "and")
-            if (expClean.startsWith(spkClean)) return true;
-            // Single-char words: accept any single-char spoken word (speech often swaps articles)
-            if (expClean.length === 1 && spkClean.length === 1) return true;
-            // Common speech recognition substitutions
+            // Only accept known speech recognition substitutions
             const shortSubs = {
-                'a': ['uh', 'ah', 'the', 'of', 'up', 'and'],
-                'i': ['eye', 'ai', 'a', 'aye'],
-                'is': ['as', 'its', 'his', 'if', 'in', 'us'],
-                'he': ['she', 'we', 'be', 'the', 'me', 'he'],
-                'it': ['at', 'its', 'is', 'in', 'if', 'et'],
-                'an': ['and', 'a', 'in', 'on', 'am'],
-                'or': ['are', 'of', 'our', 'for'],
-                'to': ['too', 'two', 'do', 'the', 'so'],
-                'do': ['to', 'too', 'due', 'so'],
-                'so': ['show', 'no', 'to'],
-                'no': ['know', 'go', 'now', 'so'],
-                'be': ['he', 'we', 'me', 'the', 'see'],
-                'we': ['he', 'be', 'me', 'the', 'we'],
-                'me': ['be', 'we', 'he', 'the', 'my'],
-                'my': ['by', 'the', 'me'],
-                'by': ['my', 'buy', 'be', 'the'],
-                'in': ['on', 'an', 'and', 'him', 'is'],
-                'on': ['in', 'an', 'and', 'own'],
-                'up': ['of', 'a', 'and'],
-                'of': ['up', 'off', 'if', 'a'],
-                'if': ['of', 'is', 'it'],
-                'at': ['it', 'that', 'and', 'a'],
-                'go': ['no', 'so', 'oh'],
-                'am': ['an', 'and', 'im'],
-                'as': ['is', 'has', 'us'],
+                'a': ['uh', 'ah'],
+                'i': ['eye'],
+                'is': ['its'],
+                'an': ['and'],
+                'to': ['too', 'two'],
+                'no': ['know'],
+                'or': ['are'],
+                'by': ['buy'],
+                'in': ['inn'],
+                'so': ['sew'],
+                'be': ['bee'],
+                'we': ['wee'],
+                'do': ['due', 'dew'],
+                'he': ['hee'],
+                'oh': ['owe', 'o'],
             };
             if (shortSubs[expClean] && shortSubs[expClean].includes(spkClean)) return true;
-            // For 2-char words: also accept if first char matches
-            if (expClean.length === 2 && spkClean.length >= 1 && spkClean[0] === expClean[0]) return true;
             return false;
         }
 
-        // --- Medium words (3-4 chars): "the", "and", "cat", "run" ---
+        // --- Medium words (3-4 chars): require first 2 chars AND similar length ---
         if (expClean.length <= 4) {
-            // First char matches and length is close
-            if (spkClean[0] === expClean[0] && Math.abs(spkClean.length - expClean.length) <= 2) return true;
-            // First 2 chars match
-            if (spkClean.length >= 2 && spkClean.substring(0, 2) === expClean.substring(0, 2)) return true;
-        }
-
-        // --- Prefix match: spoken is a partial word (interim results) ---
-        if (spkClean.length >= 2 && expClean.startsWith(spkClean)) return true;
-
-        // --- Reverse prefix: speech added a suffix ("running" for expected "run") ---
-        if (expClean.length >= 3 && spkClean.startsWith(expClean)) return true;
-
-        // --- Close match for longer words: same beginning, similar length ---
-        if (spkClean.length >= 3 && expClean.length >= 3) {
-            const prefixLen = Math.min(3, spkClean.length, expClean.length);
-            if (spkClean.substring(0, prefixLen) === expClean.substring(0, prefixLen) &&
-                Math.abs(spkClean.length - expClean.length) <= 3) {
+            if (spkClean.length >= 2 &&
+                spkClean.substring(0, 2) === expClean.substring(0, 2) &&
+                Math.abs(spkClean.length - expClean.length) <= 1) {
                 return true;
             }
         }
 
-        // --- Levenshtein distance for words 4+ chars — allow small edit distance ---
+        // --- Prefix match: spoken is start of expected (interim partial words) ---
+        // Require at least 3 chars to avoid false matches
+        if (spkClean.length >= 3 && expClean.startsWith(spkClean)) return true;
+
+        // --- Reverse prefix: expected is start of spoken ("run" matches "running") ---
+        if (expClean.length >= 3 && spkClean.startsWith(expClean)) return true;
+
+        // --- Levenshtein distance for words 4+ chars ---
         if (spkClean.length >= 4 && expClean.length >= 4) {
             const dist = this._levenshtein(spkClean, expClean);
             const maxDist = expClean.length <= 5 ? 1 : 2;
             if (dist <= maxDist) return true;
         }
 
-        // --- Last resort for 3-char words: Levenshtein 1 ---
+        // --- Levenshtein 1 for 3-char words ---
         if (spkClean.length >= 3 && expClean.length === 3) {
             if (this._levenshtein(spkClean, expClean) <= 1) return true;
         }
@@ -230,20 +203,15 @@ class ReadingSession {
     /**
      * Match spoken words against expected words.
      *
-     * DESIGN PRINCIPLES (for elementary students):
-     * - Every word the student reads correctly should turn GREEN immediately
-     * - NEVER show red on words the student hasn't tried yet
-     * - Be very generous: if the student is reading in order, assume they said each word
-     * - Only stop advancing when we truly run out of spoken words
-     * - Speech recognition inserts extra words (articles, filler) — skip over those
+     * SIMPLE, STRICT ALGORITHM:
+     * Walk expected words in order. For each one, check the next few spoken
+     * words for a match. If found, mark it green and advance both pointers.
+     * If NOT found, STOP — that's the word the student is currently on.
      *
-     * ALGORITHM:
-     * Walk through expected words one by one. For each expected word, scan ahead
-     * in the spoken transcript to find a match. If we find one, mark it green.
-     * If we don't find a match within the lookahead, we treat the expected word
-     * as "auto-accepted" (the student likely said it but speech recognition missed it)
-     * and continue — this prevents the tracking from getting stuck.
-     * We only STOP when we've consumed all spoken words.
+     * The only exception: we skip over filler/junk spoken words (like "um",
+     * "uh") that don't match ANY expected word, so they don't block progress.
+     * But we NEVER skip expected words — every expected word must be matched
+     * in sequence before the yellow highlight moves forward.
      */
     _matchWords(expected, allSpoken) {
         if (allSpoken.length === 0) return [];
@@ -252,60 +220,30 @@ class ReadingSession {
         let tIdx = 0; // pointer into allSpoken
 
         for (let eIdx = 0; eIdx < expected.length; eIdx++) {
-            // Stop if we've used all spoken words
             if (tIdx >= allSpoken.length) break;
 
             const expClean = expected[eIdx].replace(/[^a-z0-9]/g, '');
-            // Skip punctuation-only tokens (count them as matched/green)
+            // Punctuation-only tokens auto-advance (e.g. a bare hyphen)
             if (!expClean) { matched.push(expected[eIdx]); continue; }
 
-            // Try to find this expected word in the upcoming spoken words
+            // Scan spoken words for a match, skipping filler words
             let found = false;
-            const lookAhead = Math.min(tIdx + 3, allSpoken.length);
+            const maxScan = Math.min(tIdx + 4, allSpoken.length);
 
-            for (let s = tIdx; s < lookAhead; s++) {
+            for (let s = tIdx; s < maxScan; s++) {
                 const spkClean = allSpoken[s].replace(/[^a-z0-9]/g, '');
-                if (!spkClean) { continue; } // skip empty spoken tokens
+                if (!spkClean) continue;
 
                 if (this._wordsMatch(spkClean, expClean)) {
-                    // Found a match — mark this expected word as spoken
-                    matched.push(expClean); // store the expected word itself (ensures green)
+                    matched.push(expClean);
                     tIdx = s + 1;
                     found = true;
                     break;
                 }
             }
 
-            if (!found) {
-                // The student may have said this word but speech recognition didn't
-                // produce a matching token. Or speech recognition merged it with
-                // the next word. Rather than showing RED (which discourages kids),
-                // we "auto-accept" this word IF there are still more spoken words
-                // ahead (meaning the student is still reading past this point).
-                //
-                // Check: is the NEXT expected word a match for current spoken word?
-                // If yes, the student likely just said this word unclearly — auto-accept.
-                const nextExpClean = (eIdx + 1 < expected.length)
-                    ? expected[eIdx + 1].replace(/[^a-z0-9]/g, '')
-                    : null;
-                const currSpkClean = allSpoken[tIdx] ? allSpoken[tIdx].replace(/[^a-z0-9]/g, '') : '';
-
-                if (nextExpClean && currSpkClean && this._wordsMatch(currSpkClean, nextExpClean)) {
-                    // Next expected word matches current spoken — auto-accept this one
-                    matched.push(expClean);
-                    // Don't advance tIdx — let the next iteration match it
-                } else if (tIdx < allSpoken.length - 1) {
-                    // There are more spoken words ahead, so student is past this point.
-                    // Auto-accept and consume one spoken word (it was probably this word,
-                    // just mis-transcribed).
-                    matched.push(expClean);
-                    tIdx++;
-                } else {
-                    // We're at the last spoken word and it doesn't match.
-                    // This is truly where the student is — stop here.
-                    break;
-                }
-            }
+            // If no match found, the student is on this word — stop here.
+            if (!found) break;
         }
 
         return matched;
