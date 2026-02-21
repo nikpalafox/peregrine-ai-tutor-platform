@@ -117,129 +117,34 @@ class ReadingSession {
     }
 
     /**
-     * Check if a spoken word matches an expected word.
-     * Balanced: generous enough to handle speech recognition quirks,
-     * but strict enough that unrelated words don't accidentally match.
-     */
-    _wordsMatch(spkClean, expClean) {
-        if (!spkClean || !expClean) return false;
-
-        // Exact match
-        if (spkClean === expClean) return true;
-
-        // --- Short expected words (1-2 chars): "a", "I", "is", "it", "he" ---
-        // Speech recognition frequently mis-transcribes short words.
-        // Use Levenshtein ≤ 1 so "it"→"at", "is"→"as", "he"→"we" all match.
-        if (expClean.length <= 2) {
-            if (spkClean.length <= 3 && this._levenshtein(spkClean, expClean) <= 1) return true;
-            // Also check known homophones
-            const shortSubs = {
-                'a': ['uh', 'ah', 'the'],
-                'i': ['eye', 'aye'],
-                'an': ['and'],
-                'to': ['too', 'two'],
-                'no': ['know', 'now'],
-                'or': ['are'],
-                'by': ['buy', 'bye'],
-                'so': ['sew'],
-                'do': ['due', 'dew', 'to'],
-                'oh': ['owe', 'o'],
-            };
-            if (shortSubs[expClean] && shortSubs[expClean].includes(spkClean)) return true;
-            return false;
-        }
-
-        // --- Medium words (3-4 chars): first 2 chars match AND similar length ---
-        if (expClean.length <= 4) {
-            if (spkClean.length >= 2 &&
-                spkClean.substring(0, 2) === expClean.substring(0, 2) &&
-                Math.abs(spkClean.length - expClean.length) <= 1) {
-                return true;
-            }
-        }
-
-        // --- Prefix match: spoken is start of expected (interim partial words) ---
-        if (spkClean.length >= 3 && expClean.startsWith(spkClean)) return true;
-
-        // --- Reverse prefix: expected is start of spoken ("run" → "running") ---
-        if (expClean.length >= 3 && spkClean.startsWith(expClean)) return true;
-
-        // --- Levenshtein distance for words 3+ chars ---
-        if (spkClean.length >= 3 && expClean.length >= 3) {
-            const dist = this._levenshtein(spkClean, expClean);
-            const maxDist = expClean.length <= 4 ? 1 : 2;
-            if (dist <= maxDist) return true;
-        }
-
-        return false;
-    }
-
-    /**
-     * Simple Levenshtein distance for fuzzy word matching.
-     */
-    _levenshtein(a, b) {
-        const m = a.length, n = b.length;
-        const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
-        for (let i = 0; i <= m; i++) dp[i][0] = i;
-        for (let j = 0; j <= n; j++) dp[0][j] = j;
-        for (let i = 1; i <= m; i++) {
-            for (let j = 1; j <= n; j++) {
-                dp[i][j] = a[i-1] === b[j-1]
-                    ? dp[i-1][j-1]
-                    : 1 + Math.min(dp[i-1][j], dp[i][j-1], dp[i-1][j-1]);
-            }
-        }
-        return dp[m][n];
-    }
-
-    /**
-     * Match spoken words against expected words — 1:1, no lookahead.
+     * Count how many words the student has spoken (excluding filler).
      *
-     * The previous versions all had a "lookahead" that scanned multiple
-     * spoken words to find a match. This caused the yellow highlight to
-     * skip ahead because speech recognition inserts extra words (filler,
-     * articles, partial words) and the lookahead would jump past them,
-     * consuming spoken words that should have mapped to later expected words.
+     * SIMPLE APPROACH: The student reads the passage in order. We don't
+     * need to match individual words — just count how many real words
+     * they've said. That count = how far through the passage they are.
      *
-     * NEW APPROACH — strictly 1:1:
-     * For each expected word, check ONLY the next single spoken word.
-     * If it matches, advance both pointers. If not, stop.
-     * This means the yellow highlight tracks exactly where the student is.
+     * This avoids ALL the matching problems:
+     * - No false matches causing skip-ahead
+     * - No strict matching causing tracking to get stuck
+     * - No mismatch between expected/spoken tokenization
      *
-     * To handle speech recognition inserting extra filler words (um, uh,
-     * the, a) we pre-filter those out of the spoken array.
+     * The count is capped at the number of expected words so we never
+     * go past the end of the passage.
      */
-    _matchWords(expected, allSpoken) {
-        if (allSpoken.length === 0) return [];
+    _countSpokenWords(allSpoken) {
+        const fillerWords = new Set([
+            'um', 'uh', 'ah', 'er', 'like', 'hmm', 'hm', 'mm',
+            'ugh', 'huh', 'mhm', 'uhh', 'umm', 'ehm'
+        ]);
 
-        // Pre-filter obvious filler/noise words that speech recognition inserts
-        const fillerWords = new Set(['um', 'uh', 'uh', 'ah', 'er', 'like', 'hmm', 'hm', 'mm']);
-        const filtered = allSpoken.filter(w => {
+        let count = 0;
+        for (const w of allSpoken) {
             const clean = w.replace(/[^a-z0-9]/g, '');
-            return clean.length > 0 && !fillerWords.has(clean);
-        });
-
-        const matched = [];
-        let tIdx = 0;
-
-        for (let eIdx = 0; eIdx < expected.length; eIdx++) {
-            if (tIdx >= filtered.length) break;
-
-            const expClean = expected[eIdx].replace(/[^a-z0-9]/g, '');
-            if (!expClean) { matched.push(expected[eIdx]); continue; }
-
-            const spkClean = filtered[tIdx].replace(/[^a-z0-9]/g, '');
-
-            if (this._wordsMatch(spkClean, expClean)) {
-                matched.push(expClean);
-                tIdx++;
-            } else {
-                // No match — this is where the student is. Stop.
-                break;
+            if (clean.length > 0 && !fillerWords.has(clean)) {
+                count++;
             }
         }
-
-        return matched;
+        return count;
     }
 
     setupSpeechRecognition() {
@@ -272,23 +177,22 @@ class ReadingSession {
             // Build the full running transcript (final text + current interim)
             this.currentTranscript = this.lastSpokenText + interimTranscript;
 
-            // --- Word matching: full transcript (final + interim) ---
-            // Use the full transcript so highlights update in real time as
-            // the student speaks (not just when Chrome finalizes a phrase).
-            // The 1:1 matching (no lookahead) prevents skip-ahead, and the
-            // >= guard below prevents flickering when interim results shrink.
+            // --- Word position tracking ---
+            // Count spoken words to determine position in the passage.
+            // The student reads in order, so word count = position.
             const fullTranscript = this.currentTranscript.toLowerCase();
             const allSpoken = fullTranscript.split(/\s+/).filter(w => w.length > 0);
             const expected = this.expectedWords || [];
 
-            const matched = this._matchWords(expected, allSpoken);
+            // Cap at passage length
+            const spokenCount = Math.min(this._countSpokenWords(allSpoken), expected.length);
 
-            // Only advance — never shrink. Interim results can temporarily
-            // produce fewer matches, but we don't want the green words to
-            // un-highlight and flicker. This is safe with 1:1 matching
-            // because the algorithm can't skip ahead.
-            if (matched.length >= this.spokenWords.length) {
-                this.spokenWords = matched;
+            // Only advance — never shrink (prevents flicker from interim changes)
+            if (spokenCount > this.spokenWords.length) {
+                // Add the expected words as matched (all green)
+                while (this.spokenWords.length < spokenCount) {
+                    this.spokenWords.push(expected[this.spokenWords.length] || '');
+                }
             }
 
             // --- UI updates (debounced) ---
@@ -397,23 +301,22 @@ class ReadingSession {
         container.innerHTML = '';
 
         const pageText = this.pages[this.currentIndex] || '';
-        
+
+        // Set up word arrays BEFORE rendering so highlightCurrentWord works
+        this.displayWords = pageText.split(' ').filter(w => w.trim().length > 0);
+        this.expectedWords = this.displayWords.map(w => w.toLowerCase());
+        this.spokenWords = [];
+
         // Create text display with word highlighting
         const textContainer = document.createElement('div');
         textContainer.className = 'mb-6';
         textContainer.innerHTML = `
-            <p id="readingText" class="text-lg leading-relaxed mb-4">${this.highlightCurrentWord(pageText)}</p>
+            <p id="readingText" class="text-lg leading-relaxed mb-4">${this.highlightCurrentWord()}</p>
             <div id="transcriptDisplay" class="text-sm text-gray-600 mb-4 italic">
                 <strong>You said:</strong> <span id="currentTranscript"></span>
             </div>
         `;
         container.appendChild(textContainer);
-
-        // Save expected words for accuracy comparison
-        this.expectedWords = pageText.toLowerCase().split(/\s+/).filter(Boolean);
-        
-        // Reset spoken words for new page
-        this.spokenWords = [];
         this.lastSpokenText = '';
         this.currentTranscript = '';
         this.lastFeedbackCount = 0;
@@ -555,12 +458,14 @@ class ReadingSession {
         }
 
         const spokenWords = spokenText.toLowerCase().split(/\s+/);
-        // Use the same expectedWords array as the matcher for consistent indexing
         const expectedWords = this.expectedWords || [];
-        const currentWordIndex = Math.min(this.spokenWords.length, expectedWords.length - 1);
+        // The yellow highlighted word = the one at index spokenWords.length
+        const currentWordIndex = this.spokenWords.length;
 
         // The word the student is stuck on = the yellow highlighted word
-        const stuckWord = expectedWords[currentWordIndex] || '';
+        const stuckWord = (this.displayWords && this.displayWords[currentWordIndex])
+            ? this.displayWords[currentWordIndex]
+            : (expectedWords[currentWordIndex] || '');
 
         const struggleIndicators = {
             long_pause: reason === 'long_pause',
@@ -679,8 +584,7 @@ class ReadingSession {
         const textEl = document.getElementById('readingText');
         if (!textEl) return;
         
-        const pageText = this.pages[this.currentIndex] || '';
-        const newHTML = this.highlightCurrentWord(pageText);
+        const newHTML = this.highlightCurrentWord();
         
         // Only update if the content actually changed
         if (textEl.innerHTML !== newHTML) {
@@ -688,27 +592,23 @@ class ReadingSession {
         }
     }
     
-    highlightCurrentWord(text) {
+    highlightCurrentWord() {
         // Word highlighting for elementary students:
-        //   GREEN  = word was read (all matched words turn green for positive reinforcement)
+        //   GREEN  = word was read (positive reinforcement)
         //   YELLOW = the next word to read (current position)
         //   default = not yet reached
         //
-        // NO RED during active reading — red is discouraging for young students.
-        // Accuracy feedback happens separately through the tutor.
-        const words = text.split(' ');
+        // Uses this.displayWords for consistent indexing with spokenWords.
+        const words = this.displayWords || [];
         const spokenCount = this.spokenWords.length;
 
         return words.map((word, index) => {
             let className = '';
             if (index < spokenCount) {
-                // Word has been read — always green for positive reinforcement
                 className = 'text-green-600 font-semibold';
             } else if (index === spokenCount) {
-                // Next word to read
                 className = 'bg-yellow-200 font-semibold';
             }
-
             return `<span class="${className}">${word}</span>`;
         }).join(' ');
     }
@@ -717,9 +617,7 @@ class ReadingSession {
         const textEl = document.getElementById('readingText');
         if (!textEl) return;
         
-        // Re-render with highlighted incorrect words
-        const pageText = this.pages[this.currentIndex] || '';
-        textEl.innerHTML = this.highlightCurrentWord(pageText);
+        textEl.innerHTML = this.highlightCurrentWord();
     }
     
     detectRepetition(words) {
