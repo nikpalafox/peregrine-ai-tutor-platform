@@ -127,31 +127,29 @@ class ReadingSession {
         // Exact match
         if (spkClean === expClean) return true;
 
-        // --- Short expected words (1-2 chars): "a", "I", "is", "he", etc. ---
+        // --- Short expected words (1-2 chars): "a", "I", "is", "it", "he" ---
+        // Speech recognition frequently mis-transcribes short words.
+        // Use Levenshtein ≤ 1 so "it"→"at", "is"→"as", "he"→"we" all match.
         if (expClean.length <= 2) {
-            // Only accept known speech recognition substitutions
+            if (spkClean.length <= 3 && this._levenshtein(spkClean, expClean) <= 1) return true;
+            // Also check known homophones
             const shortSubs = {
-                'a': ['uh', 'ah'],
-                'i': ['eye'],
-                'is': ['its'],
+                'a': ['uh', 'ah', 'the'],
+                'i': ['eye', 'aye'],
                 'an': ['and'],
                 'to': ['too', 'two'],
-                'no': ['know'],
+                'no': ['know', 'now'],
                 'or': ['are'],
-                'by': ['buy'],
-                'in': ['inn'],
+                'by': ['buy', 'bye'],
                 'so': ['sew'],
-                'be': ['bee'],
-                'we': ['wee'],
-                'do': ['due', 'dew'],
-                'he': ['hee'],
+                'do': ['due', 'dew', 'to'],
                 'oh': ['owe', 'o'],
             };
             if (shortSubs[expClean] && shortSubs[expClean].includes(spkClean)) return true;
             return false;
         }
 
-        // --- Medium words (3-4 chars): require first 2 chars AND similar length ---
+        // --- Medium words (3-4 chars): first 2 chars match AND similar length ---
         if (expClean.length <= 4) {
             if (spkClean.length >= 2 &&
                 spkClean.substring(0, 2) === expClean.substring(0, 2) &&
@@ -161,22 +159,16 @@ class ReadingSession {
         }
 
         // --- Prefix match: spoken is start of expected (interim partial words) ---
-        // Require at least 3 chars to avoid false matches
         if (spkClean.length >= 3 && expClean.startsWith(spkClean)) return true;
 
-        // --- Reverse prefix: expected is start of spoken ("run" matches "running") ---
+        // --- Reverse prefix: expected is start of spoken ("run" → "running") ---
         if (expClean.length >= 3 && spkClean.startsWith(expClean)) return true;
 
-        // --- Levenshtein distance for words 4+ chars ---
-        if (spkClean.length >= 4 && expClean.length >= 4) {
+        // --- Levenshtein distance for words 3+ chars ---
+        if (spkClean.length >= 3 && expClean.length >= 3) {
             const dist = this._levenshtein(spkClean, expClean);
-            const maxDist = expClean.length <= 5 ? 1 : 2;
+            const maxDist = expClean.length <= 4 ? 1 : 2;
             if (dist <= maxDist) return true;
-        }
-
-        // --- Levenshtein 1 for 3-char words ---
-        if (spkClean.length >= 3 && expClean.length === 3) {
-            if (this._levenshtein(spkClean, expClean) <= 1) return true;
         }
 
         return false;
@@ -280,20 +272,24 @@ class ReadingSession {
             // Build the full running transcript (final text + current interim)
             this.currentTranscript = this.lastSpokenText + interimTranscript;
 
-            // --- Word matching: FINAL words only ---
-            // Only match against FINAL (confirmed) transcript words.
-            // Interim words change constantly and cause the highlight to
-            // jump ahead then snap back. By only using final words, the
-            // yellow highlight advances steadily and never overshoots.
-            const finalWords = this.lastSpokenText.toLowerCase()
-                .split(/\s+/).filter(w => w.length > 0);
+            // --- Word matching: full transcript (final + interim) ---
+            // Use the full transcript so highlights update in real time as
+            // the student speaks (not just when Chrome finalizes a phrase).
+            // The 1:1 matching (no lookahead) prevents skip-ahead, and the
+            // >= guard below prevents flickering when interim results shrink.
+            const fullTranscript = this.currentTranscript.toLowerCase();
+            const allSpoken = fullTranscript.split(/\s+/).filter(w => w.length > 0);
             const expected = this.expectedWords || [];
 
-            const matched = this._matchWords(expected, finalWords);
+            const matched = this._matchWords(expected, allSpoken);
 
-            // Final words never shrink, so matched count is monotonically
-            // increasing — no need for the >= guard that was hiding bugs.
-            this.spokenWords = matched;
+            // Only advance — never shrink. Interim results can temporarily
+            // produce fewer matches, but we don't want the green words to
+            // un-highlight and flicker. This is safe with 1:1 matching
+            // because the algorithm can't skip ahead.
+            if (matched.length >= this.spokenWords.length) {
+                this.spokenWords = matched;
+            }
 
             // --- UI updates (debounced) ---
             const now = Date.now();
@@ -558,11 +554,12 @@ class ReadingSession {
             return;
         }
 
-        const expectedWords = currentPageText.toLowerCase().split(/\s+/);
         const spokenWords = spokenText.toLowerCase().split(/\s+/);
-        const currentWordIndex = Math.min(this.spokenWords.length, expectedWords.length);
+        // Use the same expectedWords array as the matcher for consistent indexing
+        const expectedWords = this.expectedWords || [];
+        const currentWordIndex = Math.min(this.spokenWords.length, expectedWords.length - 1);
 
-        // The word the student is stuck on
+        // The word the student is stuck on = the yellow highlighted word
         const stuckWord = expectedWords[currentWordIndex] || '';
 
         const struggleIndicators = {
