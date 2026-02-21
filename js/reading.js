@@ -201,49 +201,50 @@ class ReadingSession {
     }
 
     /**
-     * Match spoken words against expected words.
+     * Match spoken words against expected words — 1:1, no lookahead.
      *
-     * SIMPLE, STRICT ALGORITHM:
-     * Walk expected words in order. For each one, check the next few spoken
-     * words for a match. If found, mark it green and advance both pointers.
-     * If NOT found, STOP — that's the word the student is currently on.
+     * The previous versions all had a "lookahead" that scanned multiple
+     * spoken words to find a match. This caused the yellow highlight to
+     * skip ahead because speech recognition inserts extra words (filler,
+     * articles, partial words) and the lookahead would jump past them,
+     * consuming spoken words that should have mapped to later expected words.
      *
-     * The only exception: we skip over filler/junk spoken words (like "um",
-     * "uh") that don't match ANY expected word, so they don't block progress.
-     * But we NEVER skip expected words — every expected word must be matched
-     * in sequence before the yellow highlight moves forward.
+     * NEW APPROACH — strictly 1:1:
+     * For each expected word, check ONLY the next single spoken word.
+     * If it matches, advance both pointers. If not, stop.
+     * This means the yellow highlight tracks exactly where the student is.
+     *
+     * To handle speech recognition inserting extra filler words (um, uh,
+     * the, a) we pre-filter those out of the spoken array.
      */
     _matchWords(expected, allSpoken) {
         if (allSpoken.length === 0) return [];
 
+        // Pre-filter obvious filler/noise words that speech recognition inserts
+        const fillerWords = new Set(['um', 'uh', 'uh', 'ah', 'er', 'like', 'hmm', 'hm', 'mm']);
+        const filtered = allSpoken.filter(w => {
+            const clean = w.replace(/[^a-z0-9]/g, '');
+            return clean.length > 0 && !fillerWords.has(clean);
+        });
+
         const matched = [];
-        let tIdx = 0; // pointer into allSpoken
+        let tIdx = 0;
 
         for (let eIdx = 0; eIdx < expected.length; eIdx++) {
-            if (tIdx >= allSpoken.length) break;
+            if (tIdx >= filtered.length) break;
 
             const expClean = expected[eIdx].replace(/[^a-z0-9]/g, '');
-            // Punctuation-only tokens auto-advance (e.g. a bare hyphen)
             if (!expClean) { matched.push(expected[eIdx]); continue; }
 
-            // Scan spoken words for a match, skipping filler words
-            let found = false;
-            const maxScan = Math.min(tIdx + 4, allSpoken.length);
+            const spkClean = filtered[tIdx].replace(/[^a-z0-9]/g, '');
 
-            for (let s = tIdx; s < maxScan; s++) {
-                const spkClean = allSpoken[s].replace(/[^a-z0-9]/g, '');
-                if (!spkClean) continue;
-
-                if (this._wordsMatch(spkClean, expClean)) {
-                    matched.push(expClean);
-                    tIdx = s + 1;
-                    found = true;
-                    break;
-                }
+            if (this._wordsMatch(spkClean, expClean)) {
+                matched.push(expClean);
+                tIdx++;
+            } else {
+                // No match — this is where the student is. Stop.
+                break;
             }
-
-            // If no match found, the student is on this word — stop here.
-            if (!found) break;
         }
 
         return matched;
@@ -279,20 +280,20 @@ class ReadingSession {
             // Build the full running transcript (final text + current interim)
             this.currentTranscript = this.lastSpokenText + interimTranscript;
 
-            // --- Word matching against expected text ---
-            // Re-parse the FULL transcript every time so interim words
-            // are tracked in real-time and final words stay stable.
-            const fullTranscript = this.currentTranscript.toLowerCase();
-            const allSpoken = fullTranscript.split(/\s+/).filter(w => w.length > 0);
+            // --- Word matching: FINAL words only ---
+            // Only match against FINAL (confirmed) transcript words.
+            // Interim words change constantly and cause the highlight to
+            // jump ahead then snap back. By only using final words, the
+            // yellow highlight advances steadily and never overshoots.
+            const finalWords = this.lastSpokenText.toLowerCase()
+                .split(/\s+/).filter(w => w.length > 0);
             const expected = this.expectedWords || [];
 
-            const matched = this._matchWords(expected, allSpoken);
+            const matched = this._matchWords(expected, finalWords);
 
-            // Only update spokenWords if we matched at least as many as before
-            // (prevents flickering when interim results temporarily shrink)
-            if (matched.length >= this.spokenWords.length) {
-                this.spokenWords = matched;
-            }
+            // Final words never shrink, so matched count is monotonically
+            // increasing — no need for the >= guard that was hiding bugs.
+            this.spokenWords = matched;
 
             // --- UI updates (debounced) ---
             const now = Date.now();
