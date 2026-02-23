@@ -2396,7 +2396,7 @@ async def finish_reading_session(book_id: str, data: dict, db: Session = Depends
 # ─── ElevenLabs Text-to-Speech Endpoint ─────────────────────────────
 
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
-ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "EXAVITQu4vr4xnSDxMaL")  # "Bella" - warm, friendly
+ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "FGY2WhTYpPnrIDTdsKH5")  # "Laura" - quirky, sunny, enthusiastic
 
 class TTSRequest(BaseModel):
     text: str
@@ -2431,9 +2431,9 @@ async def text_to_speech(request: TTSRequest):
         "text": text,
         "model_id": "eleven_turbo_v2",
         "voice_settings": {
-            "stability": 0.65,
+            "stability": 0.55,
             "similarity_boost": 0.75,
-            "style": 0.35,
+            "style": 0.45,
             "use_speaker_boost": True
         }
     }
