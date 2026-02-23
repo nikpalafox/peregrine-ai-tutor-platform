@@ -1112,11 +1112,12 @@ class GamificationEngine:
                 "stats": {
                     "total_messages": stats.get("messages_sent", 0),
                     "subjects_explored": sum([
-                        1 for key in stats.keys() 
+                        1 for key in stats.keys()
                         if key.endswith("_interactions") and stats[key] > 0
                     ]),
                     "voice_interactions": stats.get("voice_interactions", 0),
-                    "books_generated": stats.get("stories_generated", 0)
+                    "books_generated": stats.get("stories_generated", 0),
+                    "books_read": stats.get("books_read", 0)
                 }
             }
             
@@ -2358,9 +2359,25 @@ async def finish_reading_session(book_id: str, data: dict, db: Session = Depends
         
         db.commit()
         db.refresh(reading_session)
-        
+
         print(f"Reading session saved to database: {session_id} for chapter {book_id}")
-        
+
+        # Update gamification: increment books_read and update streaks
+        try:
+            gamification_results = await gamification_engine.process_student_activity(
+                student_id,
+                "books_read",
+                {
+                    "subject": "reading",
+                    "book_id": book_id,
+                    "accuracy": data.get('accuracy_score', 0),
+                    "wpm": data.get('wpm', 0)
+                }
+            )
+            print(f"Gamification updated for {student_id}: +{gamification_results.get('xp_gained', 0)} XP")
+        except Exception as gam_err:
+            print(f"Gamification update failed (non-fatal): {gam_err}")
+
         return {
             "message": "Reading session saved",
             "book_id": book_id,
@@ -3220,14 +3237,20 @@ def count_stories_generated_today(student_id: str) -> int:
     except Exception:
         return 0
 
-def count_books_read_today(student_id: str) -> int:
-    """Count books read completely today"""
+def count_books_read_today(student_id: str, db: Session = None) -> int:
+    """Count books/chapters read today by querying ReadingSession table"""
     try:
-        # This would track reading completions
-        # For now, return 0 as we haven't implemented reading tracking yet
-        # You can enhance this when you add book reading completion tracking
-        return 0
-        
+        if db is None:
+            # Get a DB session if one wasn't provided
+            from database import get_db
+            db = next(get_db())
+        today_start = datetime.combine(datetime.now().date(), datetime.min.time())
+        count = db.query(ReadingSession).filter(
+            ReadingSession.user_id == student_id,
+            ReadingSession.end_time >= today_start
+        ).count()
+        return count
+
     except Exception:
         return 0
 

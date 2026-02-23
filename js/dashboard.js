@@ -100,6 +100,8 @@ async function initDashboard() {
             await loadUserProfile(userId);
             await loadStudentBooks(userId);
             setupChapterGeneration(userId);
+            // Load gamification stats (streak, chapters read)
+            loadGamificationStats(userId);
         } catch (err) {
             // Don't redirect on API errors - just log and show error
             console.error('Dashboard initialization error:', err);
@@ -111,6 +113,28 @@ async function initDashboard() {
     } else {
         // No userId - just show what we can
         console.warn('No userId found, skipping profile load');
+    }
+}
+
+async function loadGamificationStats(userId) {
+    try {
+        const dashboard = await apiRequest('GET', `/gamification/student/${userId}/dashboard`);
+
+        // Update Chapters Read
+        const chaptersEl = document.getElementById('chaptersReadCount');
+        if (chaptersEl && dashboard.stats) {
+            chaptersEl.textContent = dashboard.stats.books_read || 0;
+        }
+
+        // Update Reading Streak
+        const streakEl = document.getElementById('readingStreakCount');
+        if (streakEl && dashboard.streaks && dashboard.streaks.details) {
+            const dailyStreak = dashboard.streaks.details.daily_study;
+            streakEl.textContent = dailyStreak ? dailyStreak.current : 0;
+        }
+    } catch (err) {
+        console.warn('Failed to load gamification stats (non-fatal):', err);
+        // Leave the default 0 values in place — not critical
     }
 }
 
