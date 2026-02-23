@@ -34,6 +34,7 @@ class ReadingSession {
         this.ttsVoice = null; // Will be set when voices load
         this.ttsVoiceReady = false; // Whether we've resolved the best voice
         this.isSpeaking = false; // Track if TTS is currently speaking
+        this._ttsAudio = null; // Current ElevenLabs audio element
 
         // Pre-load voices (Chrome loads them asynchronously)
         this._initTTSVoices();
@@ -399,7 +400,13 @@ class ReadingSession {
                 clearInterval(this._struggleTimer);
                 this._struggleTimer = null;
             }
-            // Stop TTS if speaking
+            // Stop ElevenLabs audio if playing
+            if (this._ttsAudio) {
+                this._ttsAudio.pause();
+                this._ttsAudio.currentTime = 0;
+                this._ttsAudio = null;
+            }
+            // Stop browser TTS if speaking
             if (this.tts) this.tts.cancel();
             this.isSpeaking = false;
             try {
@@ -509,43 +516,104 @@ class ReadingSession {
     }
 
     /**
-     * Speak feedback aloud using the Web Speech API (text-to-speech).
-     * Tuned for a warm, patient teacher voice talking to young children.
+     * Speak feedback aloud using ElevenLabs TTS via the backend proxy.
+     * Falls back to browser SpeechSynthesis if the API call fails.
      */
-    speakFeedback(text) {
-        if (!this.tts) return;
-
+    async speakFeedback(text) {
         // Cancel any in-progress speech
-        this.tts.cancel();
+        if (this._ttsAudio) {
+            this._ttsAudio.pause();
+            this._ttsAudio.currentTime = 0;
+            this._ttsAudio = null;
+        }
+        if (this.tts) this.tts.cancel();
 
-        const utterance = new SpeechSynthesisUtterance(text);
-
-        // Slow and warm — like a patient teacher talking to a child
-        utterance.rate = 0.88;   // Slightly slower than normal for clarity
-        utterance.pitch = 1.12;  // Slightly higher for warmth and friendliness
-        utterance.volume = 1.0;
-
-        // Use the pre-selected best voice
-        if (this.ttsVoice) {
-            utterance.voice = this.ttsVoice;
+        // Pause speech recognition while tutor speaks
+        this.isSpeaking = true;
+        if (this.recognition && this.isListening) {
+            try { this.recognition.stop(); } catch (e) {}
         }
 
-        // Pause speech recognition while tutor speaks to avoid feedback loop
+        try {
+            const token = localStorage.getItem('authToken');
+            const apiBase = (window.location.hostname === 'localhost' ||
+                             window.location.hostname === '127.0.0.1')
+                ? 'http://127.0.0.1:8000/api' : '/api';
+
+            const response = await fetch(`${apiBase}/tts`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ text })
+            });
+
+            if (!response.ok) throw new Error(`TTS API returned ${response.status}`);
+
+            const audioBlob = await response.blob();
+            const audioUrl = URL.createObjectURL(audioBlob);
+            const audio = new Audio(audioUrl);
+            this._ttsAudio = audio;
+
+            audio.onended = () => {
+                this.isSpeaking = false;
+                URL.revokeObjectURL(audioUrl);
+                this._ttsAudio = null;
+                if (this.isListening && this.recognition) {
+                    try { this.recognition.start(); } catch (e) {}
+                }
+            };
+
+            audio.onerror = () => {
+                this.isSpeaking = false;
+                URL.revokeObjectURL(audioUrl);
+                this._ttsAudio = null;
+                if (this.isListening && this.recognition) {
+                    try { this.recognition.start(); } catch (e) {}
+                }
+                console.warn('Audio playback failed, falling back to browser TTS');
+                this._speakWithBrowserTTS(text);
+            };
+
+            await audio.play();
+        } catch (err) {
+            console.warn('ElevenLabs TTS failed, falling back to browser TTS:', err.message);
+            this._speakWithBrowserTTS(text);
+        }
+    }
+
+    /**
+     * Fallback: speak using browser's built-in SpeechSynthesis.
+     */
+    _speakWithBrowserTTS(text) {
+        if (!this.tts) {
+            this.isSpeaking = false;
+            if (this.isListening && this.recognition) {
+                try { this.recognition.start(); } catch (e) {}
+            }
+            return;
+        }
+
+        this.tts.cancel();
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.rate = 0.88;
+        utterance.pitch = 1.12;
+        utterance.volume = 1.0;
+        if (this.ttsVoice) utterance.voice = this.ttsVoice;
+
         utterance.onstart = () => {
             this.isSpeaking = true;
             if (this.recognition && this.isListening) {
                 try { this.recognition.stop(); } catch (e) {}
             }
         };
-
         utterance.onend = () => {
             this.isSpeaking = false;
-            // Resume listening after tutor finishes speaking
             if (this.isListening && this.recognition) {
                 try { this.recognition.start(); } catch (e) {}
             }
         };
-
         utterance.onerror = () => {
             this.isSpeaking = false;
             if (this.isListening && this.recognition) {

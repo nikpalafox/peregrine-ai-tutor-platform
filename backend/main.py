@@ -1,6 +1,8 @@
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Depends, Security
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+import httpx
 from pydantic import BaseModel
 from typing import List, Dict, Optional
 import json
@@ -2390,6 +2392,73 @@ async def finish_reading_session(book_id: str, data: dict, db: Session = Depends
         traceback.print_exc()
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to save reading session: {str(e)}")
+
+# ─── ElevenLabs Text-to-Speech Endpoint ─────────────────────────────
+
+ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
+ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "EXAVITQu4vr4xnSDxMaL")  # "Bella" - warm, friendly
+
+class TTSRequest(BaseModel):
+    text: str
+    voice_id: Optional[str] = None
+
+@app.post("/api/tts")
+async def text_to_speech(request: TTSRequest):
+    """Convert text to speech using ElevenLabs API. Returns audio/mpeg stream."""
+
+    if not ELEVENLABS_API_KEY or ELEVENLABS_API_KEY == "your_elevenlabs_api_key_here":
+        raise HTTPException(status_code=503, detail="TTS service not configured")
+
+    text = request.text.strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Text is required")
+
+    # Cap text length to control costs
+    if len(text) > 500:
+        text = text[:500]
+
+    voice_id = request.voice_id or ELEVENLABS_VOICE_ID
+
+    url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
+
+    headers = {
+        "xi-api-key": ELEVENLABS_API_KEY,
+        "Content-Type": "application/json",
+        "Accept": "audio/mpeg"
+    }
+
+    payload = {
+        "text": text,
+        "model_id": "eleven_turbo_v2",
+        "voice_settings": {
+            "stability": 0.65,
+            "similarity_boost": 0.75,
+            "style": 0.35,
+            "use_speaker_boost": True
+        }
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.post(url, json=payload, headers=headers)
+
+            if response.status_code != 200:
+                logger.error(f"ElevenLabs API error: {response.status_code} {response.text[:200]}")
+                raise HTTPException(status_code=502, detail="TTS service error")
+
+            return StreamingResponse(
+                iter([response.content]),
+                media_type="audio/mpeg",
+                headers={"Content-Disposition": "inline", "Cache-Control": "no-cache"}
+            )
+    except httpx.TimeoutException:
+        logger.error("ElevenLabs API timeout")
+        raise HTTPException(status_code=504, detail="TTS service timeout")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"TTS error: {e}")
+        raise HTTPException(status_code=500, detail="TTS service unavailable")
 
 def extract_topics(message: str) -> List[str]:
     """Simple topic extraction from student messages"""
