@@ -177,22 +177,25 @@ class ReadingSession {
             // Build the full running transcript (final text + current interim)
             this.currentTranscript = this.lastSpokenText + interimTranscript;
 
-            // --- Word position tracking ---
-            // Count spoken words to determine position in the passage.
-            // The student reads in order, so word count = position.
-            const fullTranscript = this.currentTranscript.toLowerCase();
-            const allSpoken = fullTranscript.split(/\s+/).filter(w => w.length > 0);
+            // --- Word position tracking: FINAL words only ---
+            // Only count words from the FINAL (confirmed) transcript.
+            // Interim results include speculative predictions that haven't
+            // been spoken yet, which inflates the count and makes the
+            // yellow highlight skip ahead. Final results are stable —
+            // Chrome only marks a result as final after it's confident
+            // the student actually said those words.
+            const finalWords = this.lastSpokenText.toLowerCase()
+                .split(/\s+/).filter(w => w.length > 0);
             const expected = this.expectedWords || [];
 
             // Cap at passage length
-            const spokenCount = Math.min(this._countSpokenWords(allSpoken), expected.length);
+            const spokenCount = Math.min(
+                this._countSpokenWords(finalWords), expected.length
+            );
 
-            // Only advance — never shrink (prevents flicker from interim changes)
-            if (spokenCount > this.spokenWords.length) {
-                // Add the expected words as matched (all green)
-                while (this.spokenWords.length < spokenCount) {
-                    this.spokenWords.push(expected[this.spokenWords.length] || '');
-                }
+            // Update position (final words only grow, never shrink)
+            while (this.spokenWords.length < spokenCount) {
+                this.spokenWords.push(expected[this.spokenWords.length] || '');
             }
 
             // --- UI updates (debounced) ---

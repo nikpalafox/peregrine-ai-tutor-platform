@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Word Tracking Tests</title>
+    <style>
+        body { font-family: monospace; padding: 20px; }
+        .pass { color: green; }
+        .fail { color: red; font-weight: bold; }
+        h2 { margin-top: 24px; }
+        pre { background: #f5f5f5; padding: 8px; border-radius: 4px; }
+    </style>
+</head>
+<body>
+<h1>Word Tracking Unit Tests</h1>
+<div id="results"></div>
+
+<script>
+// Minimal stub of ReadingSession for testing
+// We only need the tracking logic, not the full class
+
+class TestReadingSession {
+    constructor() {
+        this.spokenWords = [];
+        this.expectedWords = [];
+        this.displayWords = [];
+        this.lastSpokenText = '';
+        this.currentTranscript = '';
+    }
+
+    _countSpokenWords(allSpoken) {
+        const fillerWords = new Set([
+            'um', 'uh', 'ah', 'er', 'like', 'hmm', 'hm', 'mm',
+            'ugh', 'huh', 'mhm', 'uhh', 'umm', 'ehm'
+        ]);
+        let count = 0;
+        for (const w of allSpoken) {
+            const clean = w.replace(/[^a-z0-9]/g, '');
+            if (clean.length > 0 && !fillerWords.has(clean)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    // Simulate what onresult does with the fix (FINAL words only)
+    simulateFinalWords(finalText) {
+        this.lastSpokenText = finalText;
+        this.currentTranscript = finalText;
+
+        const finalWords = this.lastSpokenText.toLowerCase()
+            .split(/\s+/).filter(w => w.length > 0);
+
+        const spokenCount = Math.min(
+            this._countSpokenWords(finalWords), this.expectedWords.length
+        );
+
+        while (this.spokenWords.length < spokenCount) {
+            this.spokenWords.push(this.expectedWords[this.spokenWords.length] || '');
+        }
+    }
+
+    highlightCurrentWord() {
+        const words = this.displayWords || [];
+        const spokenCount = this.spokenWords.length;
+        return words.map((word, index) => {
+            let className = '';
+            if (index < spokenCount) {
+                className = 'GREEN';
+            } else if (index === spokenCount) {
+                className = 'YELLOW';
+            }
+            return `[${className || '---'}]${word}`;
+        }).join(' ');
+    }
+
+    setupPage(text) {
+        this.displayWords = text.split(' ').filter(w => w.trim().length > 0);
+        this.expectedWords = this.displayWords.map(w => w.toLowerCase());
+        this.spokenWords = [];
+        this.lastSpokenText = '';
+        this.currentTranscript = '';
+    }
+
+    getYellowWordIndex() {
+        return this.spokenWords.length;
+    }
+
+    getStuckWord() {
+        const idx = this.spokenWords.length;
+        return (this.displayWords && this.displayWords[idx])
+            ? this.displayWords[idx]
+            : (this.expectedWords[idx] || '');
+    }
+}
+
+// --- Test runner ---
+const results = [];
+let testCount = 0;
+let passCount = 0;
+
+function assert(condition, description) {
+    testCount++;
+    if (condition) {
+        passCount++;
+        results.push(`<div class="pass">✓ ${description}</div>`);
+    } else {
+        results.push(`<div class="fail">✗ ${description}</div>`);
+    }
+}
+
+function assertEqual(actual, expected, description) {
+    testCount++;
+    if (actual === expected) {
+        passCount++;
+        results.push(`<div class="pass">✓ ${description}</div>`);
+    } else {
+        results.push(`<div class="fail">✗ ${description} — expected: ${expected}, got: ${actual}</div>`);
+    }
+}
+
+// ===== TEST SUITE =====
+
+// --- Test 1: Yellow starts at first word ---
+(function() {
+    const s = new TestReadingSession();
+    s.setupPage('The little fox ran fast');
+    assertEqual(s.getYellowWordIndex(), 0, 'Yellow starts at index 0 (first word)');
+    assertEqual(s.getStuckWord(), 'The', 'Stuck word is "The" (first word)');
+})();
+
+// --- Test 2: Saying 1 word moves yellow to word 2 ---
+(function() {
+    const s = new TestReadingSession();
+    s.setupPage('The little fox ran fast');
+    s.simulateFinalWords('the');
+    assertEqual(s.spokenWords.length, 1, 'After saying "the": 1 word matched');
+    assertEqual(s.getYellowWordIndex(), 1, 'Yellow is at index 1 ("little")');
+    assertEqual(s.getStuckWord(), 'little', 'Stuck word is "little"');
+})();
+
+// --- Test 3: Saying 3 words moves yellow to word 4 ---
+(function() {
+    const s = new TestReadingSession();
+    s.setupPage('The little fox ran fast');
+    s.simulateFinalWords('the little fox');
+    assertEqual(s.spokenWords.length, 3, 'After 3 words: 3 matched');
+    assertEqual(s.getYellowWordIndex(), 3, 'Yellow is at index 3 ("ran")');
+    assertEqual(s.getStuckWord(), 'ran', 'Stuck word is "ran"');
+})();
+
+// --- Test 4: Yellow never goes past end of passage ---
+(function() {
+    const s = new TestReadingSession();
+    s.setupPage('Hi there');
+    s.simulateFinalWords('hi there and more words');
+    assertEqual(s.spokenWords.length, 2, 'Capped at passage length (2)');
+    assertEqual(s.getYellowWordIndex(), 2, 'Yellow at end (index 2, past last word)');
+})();
+
+// --- Test 5: Filler words are not counted ---
+(function() {
+    const s = new TestReadingSession();
+    s.setupPage('The cat sat down');
+    s.simulateFinalWords('the um cat uh sat');
+    assertEqual(s.spokenWords.length, 3, 'Filler "um" and "uh" excluded: 3 real words');
+    assertEqual(s.getYellowWordIndex(), 3, 'Yellow on "down" (index 3)');
+})();
+
+// --- Test 6: Never shrinks (monotonically increasing) ---
+(function() {
+    const s = new TestReadingSession();
+    s.setupPage('The cat is big');
+    s.simulateFinalWords('the cat is');
+    assertEqual(s.spokenWords.length, 3, 'After "the cat is": 3 matched');
+    // Simulate a scenario where final text doesn't shrink (it never does)
+    s.simulateFinalWords('the cat is');
+    assertEqual(s.spokenWords.length, 3, 'Still 3 after same final text');
+    s.simulateFinalWords('the cat is big');
+    assertEqual(s.spokenWords.length, 4, 'After "big" added: 4 matched');
+})();
+
+// --- Test 7: Interim words do NOT affect position ---
+(function() {
+    const s = new TestReadingSession();
+    s.setupPage('The cat is big');
+    // Only final words matter — simulate adding interim separately
+    s.lastSpokenText = 'the cat ';
+    s.currentTranscript = 'the cat is big and fat'; // interim has extra
+    // Run the tracking logic manually with FINAL only
+    const finalWords = s.lastSpokenText.toLowerCase()
+        .split(/\s+/).filter(w => w.length > 0);
+    const spokenCount = Math.min(
+        s._countSpokenWords(finalWords), s.expectedWords.length
+    );
+    while (s.spokenWords.length < spokenCount) {
+        s.spokenWords.push(s.expectedWords[s.spokenWords.length] || '');
+    }
+    assertEqual(s.spokenWords.length, 2, 'Only 2 final words counted despite interim having 6');
+    assertEqual(s.getYellowWordIndex(), 2, 'Yellow on "is" (not skipped ahead)');
+})();
+
+// --- Test 8: Highlight rendering is correct ---
+(function() {
+    const s = new TestReadingSession();
+    s.setupPage('The cat sat');
+    s.simulateFinalWords('the cat');
+    const html = s.highlightCurrentWord();
+    assert(html.includes('[GREEN]The'), 'First word is green');
+    assert(html.includes('[GREEN]cat'), 'Second word is green');
+    assert(html.includes('[YELLOW]sat'), 'Third word is yellow');
+})();
+
+// --- Test 9: Stuck word matches yellow word exactly ---
+(function() {
+    const s = new TestReadingSession();
+    s.setupPage('A big red ball');
+    s.simulateFinalWords('a big');
+    assertEqual(s.getStuckWord(), 'red', 'Stuck word is "red" (the yellow word)');
+    s.simulateFinalWords('a big red');
+    assertEqual(s.getStuckWord(), 'ball', 'After progress, stuck word is "ball"');
+})();
+
+// --- Test 10: Speech recognition adds extra words ---
+(function() {
+    const s = new TestReadingSession();
+    s.setupPage('I like cats');
+    // SR adds "I" and "really" but only final
+    s.simulateFinalWords('I really like cats');
+    // 4 spoken words, but passage only has 3
+    assertEqual(s.spokenWords.length, 3, 'Capped at 3 (passage length), not 4');
+})();
+
+// --- Test 11: Empty passage ---
+(function() {
+    const s = new TestReadingSession();
+    s.setupPage('');
+    s.simulateFinalWords('hello world');
+    assertEqual(s.spokenWords.length, 0, 'No expected words: 0 matched');
+})();
+
+// --- Test 12: Incremental final words (simulates Chrome batching) ---
+(function() {
+    const s = new TestReadingSession();
+    s.setupPage('The big brown fox jumped over');
+    // Chrome finalizes in chunks
+    s.simulateFinalWords('the big');
+    assertEqual(s.spokenWords.length, 2, 'Chunk 1: 2 words');
+    assertEqual(s.getYellowWordIndex(), 2, 'Yellow on "brown"');
+
+    s.simulateFinalWords('the big brown fox');
+    assertEqual(s.spokenWords.length, 4, 'Chunk 2: 4 words');
+    assertEqual(s.getYellowWordIndex(), 4, 'Yellow on "jumped"');
+
+    s.simulateFinalWords('the big brown fox jumped over');
+    assertEqual(s.spokenWords.length, 6, 'Chunk 3: all 6 words');
+    assertEqual(s.getYellowWordIndex(), 6, 'Yellow past last word (done)');
+})();
+
+// --- Render results ---
+document.getElementById('results').innerHTML =
+    `<h2>Results: ${passCount}/${testCount} passed</h2>` +
+    results.join('\n');
+</script>
+</body>
+</html>
