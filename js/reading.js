@@ -30,6 +30,9 @@ class ReadingSession {
         this.lastProgressTime = 0; // When last progress was made
         this.feedbackInFlight = false; // Prevent overlapping API calls
         this.lastSpeechActivityTime = 0; // Last time any speech was detected
+        this._processedFinalCount = 0; // How many final words we've already advanced for
+        this._advanceQueue = []; // Queue of positions to advance to, animated one-by-one
+        this._advanceTimer = null; // Timer for animating word-by-word advancement
         this.tts = window.speechSynthesis; // Text-to-speech
         this.ttsVoice = null; // Will be set when voices load
         this.ttsVoiceReady = false; // Whether we've resolved the best voice
@@ -118,34 +121,53 @@ class ReadingSession {
     }
 
     /**
-     * Count how many words the student has spoken (excluding filler).
-     *
-     * SIMPLE APPROACH: The student reads the passage in order. We don't
-     * need to match individual words — just count how many real words
-     * they've said. That count = how far through the passage they are.
-     *
-     * This avoids ALL the matching problems:
-     * - No false matches causing skip-ahead
-     * - No strict matching causing tracking to get stuck
-     * - No mismatch between expected/spoken tokenization
-     *
-     * The count is capped at the number of expected words so we never
-     * go past the end of the passage.
+     * Filter out filler words and return only real spoken words.
      */
-    _countSpokenWords(allSpoken) {
+    _filterFillers(words) {
         const fillerWords = new Set([
             'um', 'uh', 'ah', 'er', 'like', 'hmm', 'hm', 'mm',
             'ugh', 'huh', 'mhm', 'uhh', 'umm', 'ehm'
         ]);
-
-        let count = 0;
-        for (const w of allSpoken) {
+        return words.filter(w => {
             const clean = w.replace(/[^a-z0-9]/g, '');
-            if (clean.length > 0 && !fillerWords.has(clean)) {
-                count++;
-            }
+            return clean.length > 0 && !fillerWords.has(clean);
+        });
+    }
+
+    /**
+     * Advance the yellow highlight by one word.
+     * Called on a timer so that batch-finalized words
+     * appear to move one-by-one instead of jumping.
+     */
+    _advanceOneWord() {
+        if (this._advanceQueue.length === 0) {
+            this._advanceTimer = null;
+            return;
         }
-        return count;
+
+        const expected = this.expectedWords || [];
+        if (this.spokenWords.length < expected.length) {
+            this.spokenWords.push(expected[this.spokenWords.length] || '');
+        }
+        this._advanceQueue.shift();
+
+        // Update UI immediately for this single word advance
+        this.updateAccuracyDisplay();
+        this.updateWordHighlighting();
+
+        // Progress tracking for struggle detection
+        if (this.spokenWords.length > this.lastProgressIndex) {
+            this.lastProgressIndex = this.spokenWords.length;
+            this.lastProgressTime = Date.now();
+            this.pauseStartTime = null;
+        }
+
+        // Schedule next word if more in queue
+        if (this._advanceQueue.length > 0) {
+            this._advanceTimer = setTimeout(() => this._advanceOneWord(), 150);
+        } else {
+            this._advanceTimer = null;
+        }
     }
 
     setupSpeechRecognition() {
@@ -178,43 +200,39 @@ class ReadingSession {
             // Build the full running transcript (final text + current interim)
             this.currentTranscript = this.lastSpokenText + interimTranscript;
 
-            // --- Word position tracking: FINAL words only ---
-            // Only count words from the FINAL (confirmed) transcript.
-            // Interim results include speculative predictions that haven't
-            // been spoken yet, which inflates the count and makes the
-            // yellow highlight skip ahead. Final results are stable —
-            // Chrome only marks a result as final after it's confident
-            // the student actually said those words.
+            // --- Word position tracking: incremental, animated ---
+            // Chrome batches words into final results (3-5 at once).
+            // If we advance by the full batch instantly, yellow jumps ahead.
+            // Instead: track how many final words we've ALREADY processed,
+            // find NEW ones, and queue them for one-by-one advancement.
             const finalWords = this.lastSpokenText.toLowerCase()
                 .split(/\s+/).filter(w => w.length > 0);
+            const realWords = this._filterFillers(finalWords);
             const expected = this.expectedWords || [];
 
-            // Cap at passage length
-            const spokenCount = Math.min(
-                this._countSpokenWords(finalWords), expected.length
-            );
+            // How many new real words since last processing?
+            const totalReal = Math.min(realWords.length, expected.length);
+            const newWordCount = totalReal - this._processedFinalCount;
 
-            // Update position (final words only grow, never shrink)
-            while (this.spokenWords.length < spokenCount) {
-                this.spokenWords.push(expected[this.spokenWords.length] || '');
+            if (newWordCount > 0) {
+                this._processedFinalCount = totalReal;
+
+                // Queue each new word for one-by-one animated advancement
+                for (let i = 0; i < newWordCount; i++) {
+                    this._advanceQueue.push(1);
+                }
+
+                // Start the animation timer if not already running
+                if (!this._advanceTimer) {
+                    this._advanceOneWord();
+                }
             }
 
-            // --- UI updates (debounced) ---
+            // --- UI updates (transcript display, debounced) ---
             const now = Date.now();
-            if (now - this.lastUpdateTime > this.updateDebounceDelay ||
-                this.spokenWords.length !== this.lastSpokenWordsCount) {
-                this.updateAccuracyDisplay();
+            if (now - this.lastUpdateTime > this.updateDebounceDelay) {
                 this.updateTranscriptDisplay();
-                this.updateWordHighlighting();
                 this.lastUpdateTime = now;
-                this.lastSpokenWordsCount = this.spokenWords.length;
-            }
-
-            // --- Progress tracking for struggle detection ---
-            if (this.spokenWords.length > this.lastProgressIndex) {
-                this.lastProgressIndex = this.spokenWords.length;
-                this.lastProgressTime = Date.now();
-                this.pauseStartTime = null; // student is making progress, reset pause
             }
 
             // Any speech activity at all resets the silence timer
@@ -310,6 +328,9 @@ class ReadingSession {
         this.displayWords = pageText.split(' ').filter(w => w.trim().length > 0);
         this.expectedWords = this.displayWords.map(w => w.toLowerCase());
         this.spokenWords = [];
+        this._processedFinalCount = 0;
+        this._advanceQueue = [];
+        if (this._advanceTimer) { clearTimeout(this._advanceTimer); this._advanceTimer = null; }
 
         // Create text display with word highlighting
         const textContainer = document.createElement('div');
@@ -367,6 +388,9 @@ class ReadingSession {
     startListening() {
         if (this.recognition) {
             this.spokenWords = [];
+            this._processedFinalCount = 0;
+            this._advanceQueue = [];
+            if (this._advanceTimer) { clearTimeout(this._advanceTimer); this._advanceTimer = null; }
             this.lastSpokenText = '';
             this.currentTranscript = '';
             this.isListening = true;
@@ -394,6 +418,9 @@ class ReadingSession {
     stopListening() {
         if (this.recognition) {
             this.isListening = false;
+            // Clear word advance animation
+            if (this._advanceTimer) { clearTimeout(this._advanceTimer); this._advanceTimer = null; }
+            this._advanceQueue = [];
             this.pauseStartTime = null;
             // Clear struggle timer
             if (this._struggleTimer) {
