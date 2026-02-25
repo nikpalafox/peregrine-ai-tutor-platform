@@ -385,6 +385,190 @@
             margin-right: auto;
         }
 
+        /* ---- Team ---- */
+        .team {
+            background: var(--surface-dim);
+            padding: 80px 24px;
+        }
+
+        .team-inner {
+            max-width: 1120px;
+            margin: 0 auto;
+        }
+
+        .team-card {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 40px;
+            align-items: center;
+            background: var(--surface);
+            border: 1.5px solid var(--border);
+            border-radius: var(--radius-xl);
+            padding: 48px;
+            box-shadow: var(--shadow-md);
+            max-width: 800px;
+        }
+
+        .team-avatar {
+            width: 140px;
+            height: 140px;
+            background: linear-gradient(135deg, var(--primary) 0%, #8b5cf6 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 48px;
+            font-weight: 800;
+            color: #fff;
+            letter-spacing: -0.02em;
+            flex-shrink: 0;
+        }
+
+        .team-info h3 {
+            font-size: 22px;
+            font-weight: 800;
+            margin: 0 0 4px 0;
+        }
+
+        .team-role {
+            font-size: 14px;
+            color: var(--primary);
+            font-weight: 600;
+            margin: 0 0 16px 0;
+        }
+
+        .team-bio {
+            font-size: 15px;
+            line-height: 1.7;
+            color: var(--text-secondary);
+            margin: 0 0 20px 0;
+        }
+
+        .team-links {
+            display: flex;
+            gap: 12px;
+        }
+
+        .team-links a {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-decoration: none;
+            padding: 6px 14px;
+            border-radius: var(--radius-sm);
+            border: 1.5px solid var(--border);
+            transition: all 0.2s ease;
+        }
+
+        .team-links a:hover {
+            border-color: var(--primary);
+            color: var(--primary);
+            background: var(--primary-bg);
+        }
+
+        /* ---- Contact ---- */
+        .contact {
+            padding: 80px 24px;
+            max-width: 1120px;
+            margin: 0 auto;
+        }
+
+        .contact-grid {
+            display: grid;
+            grid-template-columns: 1fr 1.2fr;
+            gap: 48px;
+            margin-top: 48px;
+        }
+
+        .contact-info h3 {
+            font-size: 20px;
+            font-weight: 700;
+            margin: 0 0 16px 0;
+        }
+
+        .contact-info p {
+            font-size: 15px;
+            line-height: 1.7;
+            color: var(--text-secondary);
+            margin: 0 0 24px 0;
+        }
+
+        .contact-email-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--primary);
+            text-decoration: none;
+        }
+
+        .contact-email-link:hover {
+            text-decoration: underline;
+        }
+
+        .contact-form {
+            background: var(--surface);
+            border: 1.5px solid var(--border);
+            border-radius: var(--radius-lg);
+            padding: 36px;
+            box-shadow: var(--shadow-sm);
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 6px;
+        }
+
+        .form-group input,
+        .form-group textarea,
+        .form-group select {
+            width: 100%;
+            padding: 10px 14px;
+            border: 1.5px solid var(--border);
+            border-radius: var(--radius-sm);
+            font-size: 14px;
+            font-family: inherit;
+            color: var(--text-primary);
+            background: var(--surface);
+            transition: border-color 0.2s ease;
+        }
+
+        .form-group input:focus,
+        .form-group textarea:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
+        }
+
+        .form-group textarea {
+            resize: vertical;
+            min-height: 120px;
+        }
+
+        .form-success {
+            display: none;
+            background: #ecfdf5;
+            border: 1.5px solid #6ee7b7;
+            border-radius: var(--radius-sm);
+            padding: 16px;
+            text-align: center;
+            font-size: 14px;
+            font-weight: 600;
+            color: #065f46;
+        }
+
         /* ---- CTA ---- */
         .cta {
             background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #a78bfa 100%);
@@ -445,8 +629,24 @@
             color: var(--text-muted);
         }
 
+        /* ---- Nav links ---- */
+        .nav-actions .btn-ghost {
+            padding: 8px 14px;
+            font-size: 13px;
+        }
+
         /* ---- Responsive ---- */
         @media (max-width: 900px) {
+            .nav {
+                flex-wrap: wrap;
+                gap: 12px;
+            }
+
+            .nav-actions {
+                flex-wrap: wrap;
+                justify-content: center;
+            }
+
             .hero {
                 grid-template-columns: 1fr;
                 gap: 40px;
@@ -480,9 +680,36 @@
                 grid-template-columns: 1fr;
                 gap: 40px;
             }
+
+            .team-card {
+                grid-template-columns: 1fr;
+                text-align: center;
+                padding: 36px;
+                gap: 24px;
+            }
+
+            .team-avatar {
+                margin: 0 auto;
+                width: 110px;
+                height: 110px;
+                font-size: 36px;
+            }
+
+            .team-links {
+                justify-content: center;
+            }
+
+            .contact-grid {
+                grid-template-columns: 1fr;
+                gap: 32px;
+            }
         }
 
         @media (max-width: 480px) {
+            .nav-link-section {
+                display: none;
+            }
+
             .hero-content h1 {
                 font-size: 28px;
             }
@@ -502,6 +729,14 @@
             .cta h2 {
                 font-size: 28px;
             }
+
+            .team-card {
+                padding: 24px;
+            }
+
+            .contact-form {
+                padding: 24px;
+            }
         }
     </style>
 </head>
@@ -514,6 +749,9 @@
             <span>Peregrine</span>
         </a>
         <div class="nav-actions">
+            <a href="#features" class="btn btn-ghost nav-link-section">Features</a>
+            <a href="#team" class="btn btn-ghost nav-link-section">Team</a>
+            <a href="#contact" class="btn btn-ghost nav-link-section">Contact</a>
             <a href="login.html" class="btn btn-ghost">Sign In</a>
             <a href="login.html" class="btn btn-primary" onclick="localStorage.setItem('showRegister','1')">Get Started</a>
         </div>
@@ -621,6 +859,78 @@
         </div>
     </section>
 
+    <!-- The Team -->
+    <section class="team" id="team">
+        <div class="team-inner">
+            <p class="section-label">The Team</p>
+            <h2 class="section-title">Built by an educator and technologist</h2>
+            <p class="section-subtitle">Peregrine was created out of a passion for making reading accessible and fun for every child.</p>
+
+            <div class="team-card">
+                <div class="team-avatar">NP</div>
+                <div class="team-info">
+                    <h3>Nikolas Palafox</h3>
+                    <p class="team-role">Founder &amp; Creator</p>
+                    <p class="team-bio">Nik is a Gen AI product leader with a background in education and technology. A University of Michigan graduate, he previously taught Python and data science to over 200 students as an Instructional Aide. Peregrine grew from a simple idea: what if every child had access to a patient, always-available reading tutor? Combining his experience in AI product development and education, Nik built Peregrine to help young readers build confidence one word at a time.</p>
+                    <div class="team-links">
+                        <a href="https://www.linkedin.com/in/nikolas-palafox/" target="_blank" rel="noopener noreferrer">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
+                            LinkedIn
+                        </a>
+                        <a href="mailto:nikpalafox@gmail.com">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+                            Email
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Contact Us -->
+    <section class="contact" id="contact">
+        <p class="section-label">Contact Us</p>
+        <h2 class="section-title">We'd love to hear from you</h2>
+        <p class="section-subtitle">Have feedback, a question, or an idea? Drop us a message and we'll get back to you.</p>
+
+        <div class="contact-grid">
+            <div class="contact-info">
+                <h3>Get in touch</h3>
+                <p>Whether you're a parent, teacher, or just curious about Peregrine, we welcome your thoughts. Your feedback helps us build a better reading experience for kids everywhere.</p>
+                <a href="mailto:nikpalafox@gmail.com" class="contact-email-link">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+                    nikpalafox@gmail.com
+                </a>
+            </div>
+            <form class="contact-form" id="contactForm">
+                <div class="form-group">
+                    <label for="contactName">Name</label>
+                    <input type="text" id="contactName" name="name" placeholder="Your name" required>
+                </div>
+                <div class="form-group">
+                    <label for="contactEmail">Email</label>
+                    <input type="email" id="contactEmail" name="email" placeholder="you@example.com" required>
+                </div>
+                <div class="form-group">
+                    <label for="contactType">What's this about?</label>
+                    <select id="contactType" name="type">
+                        <option value="feedback">General Feedback</option>
+                        <option value="bug">Bug Report</option>
+                        <option value="feature">Feature Request</option>
+                        <option value="question">Question</option>
+                        <option value="other">Other</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="contactMessage">Message</label>
+                    <textarea id="contactMessage" name="message" placeholder="Tell us what's on your mind..." required></textarea>
+                </div>
+                <button type="submit" class="btn btn-primary" style="width: 100%;">Send Message</button>
+                <div class="form-success" id="formSuccess">Thanks for reaching out! We'll get back to you soon.</div>
+            </form>
+        </div>
+    </section>
+
     <!-- CTA -->
     <section class="cta">
         <div class="cta-inner">
@@ -642,6 +952,43 @@
         if (token && userId) {
             window.location.href = 'dashboard.html';
         }
+
+        // Contact form handler
+        const contactForm = document.getElementById('contactForm');
+        if (contactForm) {
+            contactForm.addEventListener('submit', function(e) {
+                e.preventDefault();
+                const name = document.getElementById('contactName').value.trim();
+                const email = document.getElementById('contactEmail').value.trim();
+                const type = document.getElementById('contactType').value;
+                const message = document.getElementById('contactMessage').value.trim();
+
+                const subject = encodeURIComponent(`[Peregrine ${type}] from ${name}`);
+                const body = encodeURIComponent(
+                    `From: ${name}\nEmail: ${email}\nType: ${type}\n\n${message}`
+                );
+                window.location.href = `mailto:nikpalafox@gmail.com?subject=${subject}&body=${body}`;
+
+                // Show success message
+                const successEl = document.getElementById('formSuccess');
+                if (successEl) {
+                    successEl.style.display = 'block';
+                    setTimeout(() => { successEl.style.display = 'none'; }, 5000);
+                }
+                contactForm.reset();
+            });
+        }
+
+        // Smooth scroll for nav links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function(e) {
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    e.preventDefault();
+                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            });
+        });
     </script>
 </body>
 </html>
