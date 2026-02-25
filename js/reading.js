@@ -30,7 +30,8 @@ class ReadingSession {
         this.lastProgressTime = 0; // When last progress was made
         this.feedbackInFlight = false; // Prevent overlapping API calls
         this.lastSpeechActivityTime = 0; // Last time any speech was detected
-        this._processedFinalCount = 0; // How many final words we've already advanced for
+        this._processedSpokenIndex = 0; // Index into spoken words we've already matched
+        this._matchedExpectedCount = 0; // How many expected words we've matched so far
         this._advanceQueue = []; // Queue of positions to advance to, animated one-by-one
         this._advanceTimer = null; // Timer for animating word-by-word advancement
         this.tts = window.speechSynthesis; // Text-to-speech
@@ -125,13 +126,23 @@ class ReadingSession {
      */
     _filterFillers(words) {
         const fillerWords = new Set([
-            'um', 'uh', 'ah', 'er', 'like', 'hmm', 'hm', 'mm',
+            'um', 'uh', 'ah', 'er', 'hmm', 'hm', 'mm',
             'ugh', 'huh', 'mhm', 'uhh', 'umm', 'ehm'
         ]);
         return words.filter(w => {
             const clean = w.replace(/[^a-z0-9]/g, '');
             return clean.length > 0 && !fillerWords.has(clean);
         });
+    }
+
+    /** Strip punctuation so "cat." matches "cat", "don't" matches "dont" etc. */
+    _cleanWord(w) {
+        return w.replace(/[^a-z0-9]/g, '');
+    }
+
+    /** Check if a spoken word matches an expected word (fuzzy: ignores punctuation) */
+    _wordsMatch(spoken, expected) {
+        return this._cleanWord(spoken) === this._cleanWord(expected);
     }
 
     /**
@@ -200,25 +211,35 @@ class ReadingSession {
             // Build the full running transcript (final text + current interim)
             this.currentTranscript = this.lastSpokenText + interimTranscript;
 
-            // --- Word position tracking: incremental, animated ---
-            // Chrome batches words into final results (3-5 at once).
-            // If we advance by the full batch instantly, yellow jumps ahead.
-            // Instead: track how many final words we've ALREADY processed,
-            // find NEW ones, and queue them for one-by-one advancement.
-            const finalWords = this.lastSpokenText.toLowerCase()
+            // --- Word position tracking: sequential matching ---
+            // Instead of counting spoken words and assuming 1:1 mapping,
+            // we match each spoken word against the NEXT expected word.
+            // This prevents skipping when SR adds extra words or when
+            // repeated words appear across sentence boundaries.
+            const allSpoken = this.lastSpokenText.toLowerCase()
                 .split(/\s+/).filter(w => w.length > 0);
-            const realWords = this._filterFillers(finalWords);
+            const realWords = this._filterFillers(allSpoken);
             const expected = this.expectedWords || [];
 
-            // How many new real words since last processing?
-            const totalReal = Math.min(realWords.length, expected.length);
-            const newWordCount = totalReal - this._processedFinalCount;
+            // Walk through any NEW spoken words we haven't processed yet
+            let newMatches = 0;
+            while (this._processedSpokenIndex < realWords.length
+                   && this._matchedExpectedCount < expected.length) {
+                const spokenWord = realWords[this._processedSpokenIndex];
+                const nextExpected = expected[this._matchedExpectedCount];
 
-            if (newWordCount > 0) {
-                this._processedFinalCount = totalReal;
+                if (this._wordsMatch(spokenWord, nextExpected)) {
+                    // Match! Advance expected position
+                    this._matchedExpectedCount++;
+                    newMatches++;
+                }
+                // Always advance spoken index (skip unmatched/extra words)
+                this._processedSpokenIndex++;
+            }
 
-                // Queue each new word for one-by-one animated advancement
-                for (let i = 0; i < newWordCount; i++) {
+            if (newMatches > 0) {
+                // Queue matched words for one-by-one animated advancement
+                for (let i = 0; i < newMatches; i++) {
                     this._advanceQueue.push(1);
                 }
 
@@ -328,7 +349,8 @@ class ReadingSession {
         this.displayWords = pageText.split(' ').filter(w => w.trim().length > 0);
         this.expectedWords = this.displayWords.map(w => w.toLowerCase());
         this.spokenWords = [];
-        this._processedFinalCount = 0;
+        this._processedSpokenIndex = 0;
+        this._matchedExpectedCount = 0;
         this._advanceQueue = [];
         if (this._advanceTimer) { clearTimeout(this._advanceTimer); this._advanceTimer = null; }
 
@@ -388,7 +410,8 @@ class ReadingSession {
     startListening() {
         if (this.recognition) {
             this.spokenWords = [];
-            this._processedFinalCount = 0;
+            this._processedSpokenIndex = 0;
+            this._matchedExpectedCount = 0;
             this._advanceQueue = [];
             if (this._advanceTimer) { clearTimeout(this._advanceTimer); this._advanceTimer = null; }
             this.lastSpokenText = '';
