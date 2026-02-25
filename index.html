@@ -412,16 +412,10 @@
         .team-avatar {
             width: 140px;
             height: 140px;
-            background: linear-gradient(135deg, var(--primary) 0%, #8b5cf6 100%);
             border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 48px;
-            font-weight: 800;
-            color: #fff;
-            letter-spacing: -0.02em;
+            object-fit: cover;
             flex-shrink: 0;
+            border: 3px solid var(--border);
         }
 
         .team-info h3 {
@@ -692,7 +686,6 @@
                 margin: 0 auto;
                 width: 110px;
                 height: 110px;
-                font-size: 36px;
             }
 
             .team-links {
@@ -863,15 +856,15 @@
     <section class="team" id="team">
         <div class="team-inner">
             <p class="section-label">The Team</p>
-            <h2 class="section-title">Built by an educator and technologist</h2>
-            <p class="section-subtitle">Peregrine was created out of a passion for making reading accessible and fun for every child.</p>
+            <h2 class="section-title">Built to close the gap</h2>
+            <p class="section-subtitle">Peregrine was created because too many students don't have access to the personalized help they need to stay on track.</p>
 
             <div class="team-card">
-                <div class="team-avatar">NP</div>
+                <img class="team-avatar" src="assets/headshot.jpeg" alt="Nikolas Palafox">
                 <div class="team-info">
                     <h3>Nikolas Palafox</h3>
                     <p class="team-role">Founder &amp; Creator</p>
-                    <p class="team-bio">Nik is a Gen AI product leader with a background in education and technology. A University of Michigan graduate, he previously taught Python and data science to over 200 students as an Instructional Aide. Peregrine grew from a simple idea: what if every child had access to a patient, always-available reading tutor? Combining his experience in AI product development and education, Nik built Peregrine to help young readers build confidence one word at a time.</p>
+                    <p class="team-bio">Nik is a Gen AI product leader and University of Michigan graduate currently working at Visa. Having seen firsthand how many students lack access to the personalized support they need to stay on track in school, he built Peregrine as a side project to do something about it. The idea was simple: give every child a patient, always-available reading tutor that meets them where they are and helps them build confidence one word at a time.</p>
                     <div class="team-links">
                         <a href="https://www.linkedin.com/in/nikolas-palafox/" target="_blank" rel="noopener noreferrer">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
