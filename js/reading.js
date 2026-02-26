@@ -278,25 +278,39 @@ class ReadingSession {
             }
         };
         
-        // Don't auto-restart - with continuous mode, it should keep running
-        // Only restart manually when user clicks the button
+        // Auto-restart recognition when it ends unexpectedly.
+        // Mobile browsers (and sometimes desktop) end the session after
+        // each utterance even with continuous=true. We must restart to
+        // keep listening, while PRESERVING all tracking state so the
+        // highlight doesn't reset.
         this.recognition.onend = () => {
-            // If TTS is speaking, we intentionally stopped recognition — don't update UI
+            // If TTS is speaking, we intentionally stopped — don't restart
             if (this.isSpeaking) return;
 
             if (this.isListening) {
-                console.log('Speech recognition ended unexpectedly');
-                const toggleBtn = document.querySelector('#toggleSpeech');
-                if (toggleBtn) {
-                    toggleBtn.textContent = 'Start Speaking';
-                    toggleBtn.className = 'btn-mic';
-                }
-                this.isListening = false;
-                // Clear struggle timer
-                if (this._struggleTimer) {
-                    clearInterval(this._struggleTimer);
-                    this._struggleTimer = null;
-                }
+                // Recognition ended but user hasn't clicked "stop".
+                // Auto-restart without resetting any tracking state.
+                // Use a short delay to avoid rapid restart loops.
+                console.log('Speech recognition ended — auto-restarting');
+                setTimeout(() => {
+                    if (!this.isListening || this.isSpeaking) return;
+                    try {
+                        this.recognition.start();
+                    } catch (e) {
+                        // If restart fails, update UI to reflect stopped state
+                        console.warn('Failed to restart speech recognition:', e.message);
+                        const toggleBtn = document.querySelector('#toggleSpeech');
+                        if (toggleBtn) {
+                            toggleBtn.textContent = 'Start Speaking';
+                            toggleBtn.className = 'btn-mic';
+                        }
+                        this.isListening = false;
+                        if (this._struggleTimer) {
+                            clearInterval(this._struggleTimer);
+                            this._struggleTimer = null;
+                        }
+                    }
+                }, 300);
             }
         };
     }
