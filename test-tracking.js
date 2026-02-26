@@ -1,8 +1,9 @@
 // Word Tracking Unit Tests — run with: node test-tracking.js
 //
-// Tests the sequential word-matching approach that prevents
-// the yellow highlight from skipping ahead. Words only advance
-// when the spoken word MATCHES the next expected word.
+// Tests the word tracking that matches spoken words against expected
+// words using a full re-scan + high-water mark approach. Tracking
+// uses the full transcript (final + interim) so words register as
+// soon as they appear, even before Chrome marks them as final.
 
 class TestReadingSession {
     constructor() {
@@ -11,7 +12,6 @@ class TestReadingSession {
         this.displayWords = [];
         this.lastSpokenText = '';
         this.currentTranscript = '';
-        this._processedSpokenIndex = 0;
         this._matchedExpectedCount = 0;
         this._advanceQueue = [];
     }
@@ -35,30 +35,41 @@ class TestReadingSession {
         return this._cleanWord(spoken) === this._cleanWord(expected);
     }
 
-    // Simulate what onresult does with sequential matching
+    // Simulate onresult with final words (sets both lastSpokenText and currentTranscript)
     simulateFinalWords(finalText) {
         this.lastSpokenText = finalText;
         this.currentTranscript = finalText;
+        this._runMatching();
+    }
 
-        const allSpoken = this.lastSpokenText.toLowerCase()
+    // Simulate interim words appearing (only updates currentTranscript, not lastSpokenText)
+    simulateInterimWords(finalText, interimText) {
+        this.lastSpokenText = finalText;
+        this.currentTranscript = finalText + ' ' + interimText;
+        this._runMatching();
+    }
+
+    // The actual matching logic — mirrors reading.js onresult handler
+    _runMatching() {
+        const allSpoken = this.currentTranscript.toLowerCase()
             .split(/\s+/).filter(w => w.length > 0);
         const realWords = this._filterFillers(allSpoken);
         const expected = this.expectedWords || [];
 
-        let newMatches = 0;
-        while (this._processedSpokenIndex < realWords.length
-               && this._matchedExpectedCount < expected.length) {
-            const spokenWord = realWords[this._processedSpokenIndex];
-            const nextExpected = expected[this._matchedExpectedCount];
-
-            if (this._wordsMatch(spokenWord, nextExpected)) {
-                this._matchedExpectedCount++;
-                newMatches++;
+        // Sequential match from beginning each time
+        let matchCount = 0;
+        let spokenIdx = 0;
+        while (spokenIdx < realWords.length && matchCount < expected.length) {
+            if (this._wordsMatch(realWords[spokenIdx], expected[matchCount])) {
+                matchCount++;
             }
-            this._processedSpokenIndex++;
+            spokenIdx++;
         }
 
+        // High-water mark: only advance, never go back
+        const newMatches = matchCount - this._matchedExpectedCount;
         if (newMatches > 0) {
+            this._matchedExpectedCount = matchCount;
             for (let i = 0; i < newMatches; i++) {
                 this._advanceQueue.push(1);
             }
@@ -95,7 +106,6 @@ class TestReadingSession {
         this.displayWords = text.split(' ').filter(w => w.trim().length > 0);
         this.expectedWords = this.displayWords.map(w => w.toLowerCase());
         this.spokenWords = [];
-        this._processedSpokenIndex = 0;
         this._matchedExpectedCount = 0;
         this._advanceQueue = [];
         this.lastSpokenText = '';
@@ -207,14 +217,17 @@ console.log('\n--- Test 6: Never shrinks ---');
     assertEqual(s.spokenWords.length, 4, '4 after "big"');
 })();
 
-console.log('\n--- Test 7: Interim words do NOT affect position ---');
+console.log('\n--- Test 7: Interim words do NOT go backward ---');
 (function() {
     const s = new TestReadingSession();
     s.setupPage('The cat is big');
-    s.simulateFinalWords('the cat');
+    s.simulateFinalWords('the cat is');
     s.advanceAll();
-    assertEqual(s.spokenWords.length, 2, 'Only 2 final words (not interim)');
-    assertEqual(s.getYellowWordIndex(), 2, 'Yellow on "is" (correct)');
+    assertEqual(s.spokenWords.length, 3, '3 matched from final');
+    // Interim changes to something shorter — high-water mark keeps us at 3
+    s.simulateInterimWords('the cat is', 'b');
+    s.advanceAll();
+    assertEqual(s.spokenWords.length, 3, 'Still 3 (interim "b" does not match "big")');
 })();
 
 console.log('\n--- Test 8: Highlight rendering ---');
@@ -245,8 +258,6 @@ console.log('\n--- Test 10: SR adds extra words that don\'t match ---');
 (function() {
     const s = new TestReadingSession();
     s.setupPage('I like cats');
-    // "really" doesn't match "like", so it's consumed and skipped;
-    // then "like" matches "like", "cats" matches "cats"
     s.simulateFinalWords('I really like cats');
     s.advanceAll();
     assertEqual(s.spokenWords.length, 3, 'All 3 matched (extra "really" skipped)');
@@ -355,20 +366,17 @@ console.log('\n--- Test 17: Fillers in batch do not inflate queue ---');
     assertEqual(s.getStuckWord(), 'today', 'Yellow on "today"');
 })();
 
-// === NEW: Tests for the sequential matching fix ===
+// === Tests for repeated words / sentence boundaries ===
 
 console.log('\n--- Test 18: Repeated words across sentences don\'t skip ---');
 (function() {
-    // THE BUG: "the cat" at end of sentence 1 matches "The cat" at start of sentence 2
     const s = new TestReadingSession();
     s.setupPage('I saw the cat. The cat ran away.');
-    // Student reads sentence 1 correctly
     s.simulateFinalWords('I saw the cat');
     s.advanceAll();
     assertEqual(s.spokenWords.length, 4, 'After sentence 1: 4 words');
     assertEqual(s.getStuckWord(), 'The', 'Yellow on "The" (start of sentence 2)');
 
-    // Student reads "The cat ran away"
     s.simulateFinalWords('I saw the cat the cat ran away');
     s.advanceAll();
     assertEqual(s.spokenWords.length, 8, 'After sentence 2: all 8 words');
@@ -378,7 +386,6 @@ console.log('\n--- Test 19: Extra/misrecognized words are skipped ---');
 (function() {
     const s = new TestReadingSession();
     s.setupPage('The dog ran fast');
-    // SR hears "the big dog ran really fast" — extra words "big" and "really"
     s.simulateFinalWords('the big dog ran really fast');
     s.advanceAll();
     assertEqual(s.spokenWords.length, 4, 'All 4 matched despite extras');
@@ -388,7 +395,6 @@ console.log('\n--- Test 20: Unmatched words don\'t advance position ---');
 (function() {
     const s = new TestReadingSession();
     s.setupPage('The cat sat on the mat');
-    // Student says completely wrong words
     s.simulateFinalWords('hello goodbye world');
     s.advanceAll();
     assertEqual(s.spokenWords.length, 0, 'No matches = no advancement');
@@ -407,7 +413,6 @@ console.log('\n--- Test 21: Punctuation in expected words matches spoken ---');
 console.log('\n--- Test 22: Multi-sentence passage with shared words ---');
 (function() {
     const s = new TestReadingSession();
-    // "ran" appears at end of sentence 1 and sentence 2
     s.setupPage('The fox ran. The fox ran home.');
     s.simulateFinalWords('the fox ran');
     s.advanceAll();
@@ -423,7 +428,6 @@ console.log('\n--- Test 23: SR adds words between matching words ---');
 (function() {
     const s = new TestReadingSession();
     s.setupPage('Red ball');
-    // SR hears "red uh ball" — filler between matches
     s.simulateFinalWords('red uh ball');
     s.advanceAll();
     assertEqual(s.spokenWords.length, 2, 'Both matched (filler filtered)');
@@ -433,17 +437,14 @@ console.log('\n--- Test 24: Partial match then more words arrive ---');
 (function() {
     const s = new TestReadingSession();
     s.setupPage('One two three four five');
-    // First batch: only "one" matches
     s.simulateFinalWords('one');
     s.advanceAll();
     assertEqual(s.spokenWords.length, 1, 'Batch 1: 1 match');
 
-    // Second batch: adds "blah two three" — "blah" skipped, "two" and "three" match
     s.simulateFinalWords('one blah two three');
     s.advanceAll();
     assertEqual(s.spokenWords.length, 3, 'Batch 2: 3 total matches');
 
-    // Third batch: "four five" match
     s.simulateFinalWords('one blah two three four five');
     s.advanceAll();
     assertEqual(s.spokenWords.length, 5, 'Batch 3: all 5');
@@ -456,6 +457,75 @@ console.log('\n--- Test 25: Long passage with repeated common words ---');
     s.simulateFinalWords('the big dog and the small cat and the tiny bird');
     s.advanceAll();
     assertEqual(s.spokenWords.length, 11, 'All 11 words matched in order');
+})();
+
+// === NEW: Tests for interim results (the actual bug) ===
+
+console.log('\n--- Test 26: Interim results advance tracking ---');
+(function() {
+    const s = new TestReadingSession();
+    s.setupPage('In the sky a falcon flies.');
+    // Final: "in the sky a falcon", Interim: "flies"
+    s.simulateInterimWords('in the sky a falcon', 'flies');
+    s.advanceAll();
+    assertEqual(s.spokenWords.length, 6, 'All 6 matched including interim "flies"');
+})();
+
+console.log('\n--- Test 27: Interim across sentence boundary ---');
+(function() {
+    const s = new TestReadingSession();
+    s.setupPage('A falcon flies. It is a peregrine falcon.');
+    // Final: "a falcon flies", Interim: "it is a peregrine falcon"
+    s.simulateInterimWords('a falcon flies', 'it is a peregrine falcon');
+    s.advanceAll();
+    assertEqual(s.spokenWords.length, 8, 'All 8 matched across sentence boundary');
+})();
+
+console.log('\n--- Test 28: High-water mark when interim shrinks ---');
+(function() {
+    const s = new TestReadingSession();
+    s.setupPage('The cat sat on the mat');
+    // First: interim shows 4 words matched
+    s.simulateInterimWords('the cat', 'sat on');
+    s.advanceAll();
+    assertEqual(s.spokenWords.length, 4, '4 matched');
+
+    // Interim changes to something shorter (SR revised its guess)
+    // High-water mark prevents going backward
+    s.simulateInterimWords('the cat', 'sat');
+    s.advanceAll();
+    assertEqual(s.spokenWords.length, 4, 'Still 4 (high-water mark)');
+
+    // Then final arrives with full text
+    s.simulateFinalWords('the cat sat on the mat');
+    s.advanceAll();
+    assertEqual(s.spokenWords.length, 6, 'All 6 after final arrives');
+})();
+
+console.log('\n--- Test 29: The exact failing passage ---');
+(function() {
+    const s = new TestReadingSession();
+    s.setupPage('In the sky, a falcon flies. It is a peregrine falcon. "Peregrine falcons are fast,"');
+    // Simulate Chrome batching: first sentence final, second sentence in interim
+    s.simulateInterimWords('in the sky a falcon flies', 'it is a peregrine falcon');
+    s.advanceAll();
+    assertEqual(s.spokenWords.length, 11, 'First 11 words matched');
+    assertEqual(s.getStuckWord(), '"Peregrine', 'Yellow on quoted "Peregrine"');
+
+    // Third sentence arrives
+    s.simulateFinalWords('in the sky a falcon flies it is a peregrine falcon peregrine falcons are fast');
+    s.advanceAll();
+    assertEqual(s.spokenWords.length, 15, 'All 15 words matched');
+})();
+
+console.log('\n--- Test 30: "flies it" not treated as one word ---');
+(function() {
+    const s = new TestReadingSession();
+    s.setupPage('A falcon flies. It is fast.');
+    // Chrome sends "flies" and "it" in same final result
+    s.simulateFinalWords('a falcon flies it is fast');
+    s.advanceAll();
+    assertEqual(s.spokenWords.length, 6, 'All 6 matched — "flies" and "it" are separate');
 })();
 
 // --- Summary ---

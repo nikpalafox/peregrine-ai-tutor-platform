@@ -30,8 +30,7 @@ class ReadingSession {
         this.lastProgressTime = 0; // When last progress was made
         this.feedbackInFlight = false; // Prevent overlapping API calls
         this.lastSpeechActivityTime = 0; // Last time any speech was detected
-        this._processedSpokenIndex = 0; // Index into spoken words we've already matched
-        this._matchedExpectedCount = 0; // How many expected words we've matched so far
+        this._matchedExpectedCount = 0; // High-water mark: how many expected words matched so far
         this._advanceQueue = []; // Queue of positions to advance to, animated one-by-one
         this._advanceTimer = null; // Timer for animating word-by-word advancement
         this.tts = window.speechSynthesis; // Text-to-speech
@@ -211,39 +210,33 @@ class ReadingSession {
             // Build the full running transcript (final text + current interim)
             this.currentTranscript = this.lastSpokenText + interimTranscript;
 
-            // --- Word position tracking: sequential matching ---
-            // Instead of counting spoken words and assuming 1:1 mapping,
-            // we match each spoken word against the NEXT expected word.
-            // This prevents skipping when SR adds extra words or when
-            // repeated words appear across sentence boundaries.
-            const allSpoken = this.lastSpokenText.toLowerCase()
+            // --- Word position tracking ---
+            // Re-scan the FULL transcript (final + interim) each time.
+            // This ensures words are tracked as soon as they appear,
+            // even if Chrome hasn't marked them as "final" yet.
+            // A high-water mark prevents going backward when interim changes.
+            const allSpoken = this.currentTranscript.toLowerCase()
                 .split(/\s+/).filter(w => w.length > 0);
             const realWords = this._filterFillers(allSpoken);
             const expected = this.expectedWords || [];
 
-            // Walk through any NEW spoken words we haven't processed yet
-            let newMatches = 0;
-            while (this._processedSpokenIndex < realWords.length
-                   && this._matchedExpectedCount < expected.length) {
-                const spokenWord = realWords[this._processedSpokenIndex];
-                const nextExpected = expected[this._matchedExpectedCount];
-
-                if (this._wordsMatch(spokenWord, nextExpected)) {
-                    // Match! Advance expected position
-                    this._matchedExpectedCount++;
-                    newMatches++;
+            // Sequential match from the beginning each time
+            let matchCount = 0;
+            let spokenIdx = 0;
+            while (spokenIdx < realWords.length && matchCount < expected.length) {
+                if (this._wordsMatch(realWords[spokenIdx], expected[matchCount])) {
+                    matchCount++;
                 }
-                // Always advance spoken index (skip unmatched/extra words)
-                this._processedSpokenIndex++;
+                spokenIdx++;
             }
 
+            // Only advance if we found MORE matches than before (high-water mark)
+            const newMatches = matchCount - this._matchedExpectedCount;
             if (newMatches > 0) {
-                // Queue matched words for one-by-one animated advancement
+                this._matchedExpectedCount = matchCount;
                 for (let i = 0; i < newMatches; i++) {
                     this._advanceQueue.push(1);
                 }
-
-                // Start the animation timer if not already running
                 if (!this._advanceTimer) {
                     this._advanceOneWord();
                 }
@@ -363,7 +356,6 @@ class ReadingSession {
         this.displayWords = pageText.split(' ').filter(w => w.trim().length > 0);
         this.expectedWords = this.displayWords.map(w => w.toLowerCase());
         this.spokenWords = [];
-        this._processedSpokenIndex = 0;
         this._matchedExpectedCount = 0;
         this._advanceQueue = [];
         if (this._advanceTimer) { clearTimeout(this._advanceTimer); this._advanceTimer = null; }
@@ -424,7 +416,6 @@ class ReadingSession {
     startListening() {
         if (this.recognition) {
             this.spokenWords = [];
-            this._processedSpokenIndex = 0;
             this._matchedExpectedCount = 0;
             this._advanceQueue = [];
             if (this._advanceTimer) { clearTimeout(this._advanceTimer); this._advanceTimer = null; }
