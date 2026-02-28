@@ -192,6 +192,63 @@
             font-weight: 600;
         }
 
+        /* XP Progress Bar */
+        .xp-bar-container {
+            margin-top: 14px;
+        }
+        .xp-bar-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px;
+        }
+        .xp-bar-label {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+        .xp-bar-value {
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--primary);
+        }
+        .xp-bar-track {
+            height: 10px;
+            background: var(--border);
+            border-radius: 5px;
+            overflow: hidden;
+            position: relative;
+        }
+        .xp-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #6366f1, #a78bfa, #c4b5fd);
+            border-radius: 5px;
+            transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+        }
+        .xp-bar-fill::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.3) 50%, transparent 100%);
+            animation: xpShimmer 2s ease-in-out infinite;
+        }
+        @keyframes xpShimmer {
+            0%, 100% { transform: translateX(-100%); }
+            50% { transform: translateX(100%); }
+        }
+        .xp-total {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 4px;
+            text-align: right;
+        }
+
         /* Stat Cards */
         .stat-card {
             background: var(--surface-container);
@@ -216,6 +273,185 @@
         .stat-card-value.purple { color: var(--primary); }
         .stat-card-value.green { color: var(--success); }
 
+        /* Streak Card */
+        .streak-card {
+            background: linear-gradient(135deg, #fff7ed, #ffedd5);
+            border-radius: var(--radius-md);
+            padding: 16px;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            border: 1px solid #fed7aa;
+        }
+        .streak-flame {
+            font-size: 32px;
+            line-height: 1;
+            animation: flamePulse 1.5s ease-in-out infinite;
+        }
+        .streak-flame.inactive {
+            filter: grayscale(1);
+            opacity: 0.4;
+            animation: none;
+        }
+        @keyframes flamePulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.15); }
+        }
+        .streak-info {
+            flex: 1;
+        }
+        .streak-count {
+            font-size: 24px;
+            font-weight: 800;
+            color: #c2410c;
+            line-height: 1;
+        }
+        .streak-label {
+            font-size: 12px;
+            color: #9a3412;
+            font-weight: 500;
+        }
+        .streak-best {
+            font-size: 11px;
+            color: #c2410c;
+            font-weight: 600;
+            opacity: 0.7;
+        }
+
+        /* Badge Showcase */
+        .badge-showcase {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+        }
+        .badge-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 10px 6px;
+            background: var(--surface-container);
+            border-radius: var(--radius-sm);
+            text-align: center;
+            transition: all 0.2s ease;
+            cursor: default;
+            position: relative;
+        }
+        .badge-item.earned {
+            background: linear-gradient(135deg, #eef2ff, #e0e7ff);
+            border: 1px solid #c7d2fe;
+        }
+        .badge-item.earned:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-md);
+        }
+        .badge-item.locked {
+            opacity: 0.4;
+            filter: grayscale(0.8);
+        }
+        .badge-icon {
+            font-size: 24px;
+            margin-bottom: 4px;
+        }
+        .badge-name {
+            font-size: 10px;
+            font-weight: 600;
+            color: var(--text-primary);
+            line-height: 1.2;
+        }
+        .badge-difficulty {
+            font-size: 8px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            padding: 1px 5px;
+            border-radius: 4px;
+            margin-top: 3px;
+        }
+        .badge-difficulty.bronze { background: #fef3c7; color: #92400e; }
+        .badge-difficulty.silver { background: #f1f5f9; color: #475569; }
+        .badge-difficulty.gold { background: #fef9c3; color: #854d0e; }
+        .badge-difficulty.platinum { background: #ede9fe; color: #5b21b6; }
+        .badge-new-indicator {
+            position: absolute;
+            top: -3px;
+            right: -3px;
+            width: 10px;
+            height: 10px;
+            background: #ef4444;
+            border-radius: 50%;
+            border: 2px solid var(--surface);
+            animation: badgePing 1.5s ease-in-out infinite;
+        }
+        @keyframes badgePing {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.3); opacity: 0.7; }
+        }
+        .badge-count-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+        .badge-count-text {
+            font-size: 13px;
+            color: var(--text-secondary);
+            font-weight: 600;
+        }
+        .badge-count-text span {
+            color: var(--primary);
+        }
+
+        /* Quest Board */
+        .quest-card {
+            background: var(--surface-container);
+            border-radius: var(--radius-sm);
+            padding: 12px;
+            margin-bottom: 8px;
+            border-left: 3px solid var(--primary-light);
+            transition: all 0.2s ease;
+        }
+        .quest-card:hover {
+            border-left-color: var(--primary);
+            background: #f1f5ff;
+        }
+        .quest-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px;
+        }
+        .quest-name {
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+        .quest-xp {
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--primary);
+            background: var(--primary-bg);
+            padding: 2px 8px;
+            border-radius: 100px;
+        }
+        .quest-desc {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+        }
+        .quest-progress-bar {
+            height: 6px;
+            background: var(--border);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+        .quest-progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--primary), var(--primary-light));
+            border-radius: 3px;
+            transition: width 0.5s ease;
+        }
+
         /* Activity */
         .activity-item {
             padding: 12px 0;
@@ -226,6 +462,141 @@
 
         .activity-item:last-child {
             border-bottom: none;
+        }
+
+        /* Celebration Overlay */
+        .celebration-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 2000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(15,23,42,0.6);
+            backdrop-filter: blur(6px);
+            animation: celebFadeIn 0.3s ease;
+        }
+        @keyframes celebFadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        .celebration-card {
+            background: var(--surface);
+            border-radius: var(--radius-xl);
+            padding: 40px 48px;
+            text-align: center;
+            box-shadow: 0 30px 80px rgba(0,0,0,0.25);
+            animation: celebBounceIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+            max-width: 380px;
+        }
+        @keyframes celebBounceIn {
+            0% { opacity: 0; transform: scale(0.5) translateY(40px); }
+            100% { opacity: 1; transform: scale(1) translateY(0); }
+        }
+        .celebration-icon {
+            font-size: 64px;
+            margin-bottom: 12px;
+            animation: celebSpin 0.8s ease;
+        }
+        @keyframes celebSpin {
+            0% { transform: rotateY(0deg) scale(0); }
+            50% { transform: rotateY(180deg) scale(1.2); }
+            100% { transform: rotateY(360deg) scale(1); }
+        }
+        .celebration-title {
+            font-size: 22px;
+            font-weight: 800;
+            color: var(--text-primary);
+            margin-bottom: 4px;
+        }
+        .celebration-subtitle {
+            font-size: 14px;
+            color: var(--text-secondary);
+            margin-bottom: 16px;
+        }
+        .celebration-xp {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 16px;
+            background: linear-gradient(135deg, #eef2ff, #e0e7ff);
+            border-radius: 100px;
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--primary);
+            margin-bottom: 20px;
+        }
+        .celebration-dismiss {
+            padding: 10px 32px;
+            background: var(--primary);
+            color: #fff;
+            border: none;
+            border-radius: var(--radius-sm);
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            font-family: inherit;
+            transition: all 0.15s ease;
+        }
+        .celebration-dismiss:hover {
+            background: var(--primary-dark);
+        }
+
+        /* Confetti particles */
+        .confetti {
+            position: fixed;
+            top: -10px;
+            z-index: 2001;
+            pointer-events: none;
+            animation: confettiFall linear forwards;
+        }
+        @keyframes confettiFall {
+            0% { transform: translateY(0) rotate(0deg); opacity: 1; }
+            100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
+        }
+
+        /* Toast notification for gamification */
+        .gam-toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            padding: 14px 20px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            box-shadow: var(--shadow-lg);
+            z-index: 1500;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            animation: toastSlideIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+            max-width: 340px;
+        }
+        @keyframes toastSlideIn {
+            from { opacity: 0; transform: translateX(40px) translateY(10px); }
+            to { opacity: 1; transform: translateX(0) translateY(0); }
+        }
+        .gam-toast-icon {
+            font-size: 28px;
+            flex-shrink: 0;
+        }
+        .gam-toast-content {
+            flex: 1;
+        }
+        .gam-toast-title {
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+        .gam-toast-desc {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+        .gam-toast.fade-out {
+            animation: toastFadeOut 0.3s ease forwards;
+        }
+        @keyframes toastFadeOut {
+            to { opacity: 0; transform: translateX(40px); }
         }
 
         /* Main Content */
@@ -631,34 +1002,76 @@
     <div class="dashboard-layout">
         <!-- Sidebar -->
         <aside class="sidebar">
+            <!-- Profile & Level -->
             <div class="sidebar-section">
                 <div class="sidebar-section-title">Profile</div>
                 <div class="profile-card">
                     <div class="profile-name">Welcome, <span id="userName">User</span></div>
-                    <div class="profile-meta">Grade <span id="userGrade">-</span></div>
-                    <div class="level-badge">
+                    <div class="profile-meta">Grade <span id="userGrade">-</span> &middot; <span id="levelTitle">Curious Beginner</span></div>
+                    <div class="level-badge" id="levelBadge">
                         <span>&#x2B50;</span>
-                        <span>Level 1</span>
+                        <span id="levelDisplay">Level 1</span>
+                    </div>
+                    <!-- XP Progress Bar -->
+                    <div class="xp-bar-container" id="xpBarContainer">
+                        <div class="xp-bar-header">
+                            <span class="xp-bar-label">XP Progress</span>
+                            <span class="xp-bar-value" id="xpBarValue">0 / 100 XP</span>
+                        </div>
+                        <div class="xp-bar-track">
+                            <div class="xp-bar-fill" id="xpBarFill" style="width: 0%"></div>
+                        </div>
+                        <div class="xp-total" id="xpTotalDisplay">0 XP total</div>
                     </div>
                 </div>
             </div>
 
+            <!-- Streak -->
             <div class="sidebar-section">
-                <div class="sidebar-section-title">Stats</div>
-                <div class="stat-card">
-                    <div class="stat-card-label">Reading Streak</div>
-                    <div class="stat-card-value purple"><span id="readingStreakCount">0</span> <span style="font-size: 14px; font-weight: 500; color: var(--text-muted);">days</span></div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-card-label">Chapters Read</div>
-                    <div class="stat-card-value green" id="chaptersReadCount">0</div>
+                <div class="sidebar-section-title">Daily Streak</div>
+                <div class="streak-card" id="streakCard">
+                    <div class="streak-flame" id="streakFlame">&#x1F525;</div>
+                    <div class="streak-info">
+                        <div class="streak-count"><span id="readingStreakCount">0</span> days</div>
+                        <div class="streak-label">Keep it up!</div>
+                    </div>
+                    <div class="streak-best" id="streakBest"></div>
                 </div>
             </div>
 
+            <!-- Stats -->
             <div class="sidebar-section">
-                <div class="sidebar-section-title">Recent Activity</div>
-                <div id="activity-container">
-                    <div class="activity-item" style="color: var(--text-muted); font-style: italic;">No recent activity</div>
+                <div class="sidebar-section-title">Stats</div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                    <div class="stat-card">
+                        <div class="stat-card-label">Chapters Read</div>
+                        <div class="stat-card-value green" id="chaptersReadCount" style="font-size: 24px;">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-card-label">Messages</div>
+                        <div class="stat-card-value purple" id="messagesSentCount" style="font-size: 24px;">0</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quests -->
+            <div class="sidebar-section">
+                <div class="sidebar-section-title">Daily Quests</div>
+                <div id="questBoard">
+                    <div class="quest-card" style="opacity: 0.5; border-left-color: var(--border);">
+                        <div class="quest-desc" style="margin: 0; font-style: italic;">Start reading to unlock quests!</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Badges -->
+            <div class="sidebar-section">
+                <div class="sidebar-section-title">Badges</div>
+                <div class="badge-count-row">
+                    <div class="badge-count-text"><span id="badgeEarnedCount">0</span> / <span id="badgeTotalCount">18</span> earned</div>
+                </div>
+                <div class="badge-showcase" id="badgeShowcase">
+                    <!-- Populated by JS -->
                 </div>
             </div>
         </aside>

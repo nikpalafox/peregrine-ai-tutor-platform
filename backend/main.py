@@ -817,84 +817,67 @@ class GamificationEngine:
     # In a real implementation, these would interact with your database
     
     async def get_student_stats(self, student_id: str) -> Dict:
-        self.get_student_stats = GamificationStorage.get_student_stats
+        return await GamificationStorage.get_student_stats(student_id)
 
-    
     async def student_has_badge(self, student_id: str, badge_id: str) -> bool:
-        """Check if student has a specific badge"""
-        self.student_has_badge = GamificationStorage.student_has_badge
-        return await self.student_has_badge(student_id, badge_id)
+        return await GamificationStorage.student_has_badge(student_id, badge_id)
 
     async def award_badge(self, student_id: str, badge_id: str):
-        """Award a badge to a student"""
-        achievement = Achievement(
-            id=f"{student_id}_{badge_id}_{datetime.now().timestamp()}",
-            student_id=student_id,
-            badge_id=badge_id,
-            earned_date=datetime.now()
-        )
-        self.award_badge = GamificationStorage.award_badge
-        print(f"Badge awarded: {badge_id} to student {student_id}")
-    
-    async def add_xp(self, student_id: str, xp_amount: int, reason: str):
-        """Add XP to student and check for level up"""
-        student_level = await self.get_student_level(student_id)
+        await GamificationStorage.award_badge(student_id, badge_id)
+
+    async def add_xp(self, student_id: str, xp_amount: int, reason: str) -> Dict:
+        """Add XP to student and check for level up. Returns level-up info."""
+        student_level = await GamificationStorage.get_student_level(student_id)
+        old_level = student_level.current_level
         student_level.current_xp += xp_amount
         student_level.total_xp_earned += xp_amount
 
-        self.get_student_badges = GamificationStorage.get_student_badges
-        while student_level.current_xp >= student_level.xp_to_next_level:
+        while student_level.current_xp >= student_level.xp_to_next_level and student_level.current_level < 20:
             student_level.current_xp -= student_level.xp_to_next_level
             student_level.current_level += 1
-
-            self.get_student_level = GamificationStorage.get_student_level
             level_data = self.level_thresholds[student_level.current_level]
             student_level.title = level_data["title"]
             student_level.xp_to_next_level = level_data["xp_required"]
-            
             print(f"Level up! Student {student_id} reached level {student_level.current_level}")
-        
-        await self.save_student_level(student_level)
-        self.save_student_level = GamificationStorage.save_student_level
+
+        await GamificationStorage.save_student_level(student_level)
+
+        leveled_up = student_level.current_level > old_level
+        return {
+            "level_up": leveled_up,
+            "new_level": student_level.current_level,
+            "new_title": student_level.title,
+            "current_xp": student_level.current_xp,
+            "xp_to_next_level": student_level.xp_to_next_level,
+            "total_xp_earned": student_level.total_xp_earned
+        }
 
     async def get_student_level(self, student_id: str) -> StudentLevel:
-        self.get_student_level = GamificationStorage.get_student_level
-        return await self.get_student_level(student_id)
+        return await GamificationStorage.get_student_level(student_id)
 
-    
     async def get_streak(self, student_id: str, streak_type: str) -> Optional[Streak]:
-        self.get_streak = GamificationStorage.get_streak
-        return await self.get_streak(student_id, streak_type)
-    
+        return await GamificationStorage.get_streak(student_id, streak_type)
+
     async def save_streak(self, streak: Streak):
-        """Save streak to database"""
-        self.save_streak = GamificationStorage.save_streak
-    
+        await GamificationStorage.save_streak(streak)
+
     async def get_active_quests(self, student_id: str) -> List[StudentQuest]:
-        self.get_active_quests = GamificationStorage.get_active_quests
-        return await self.get_active_quests(student_id)
+        return await GamificationStorage.get_active_quests(student_id)
 
     async def save_quest_progress(self, quest_progress: StudentQuest):
-        """Save quest progress to database"""
-        self.save_quest_progress = GamificationStorage.save_quest_progress
-        await self.save_quest_progress(quest_progress)
-    
+        await GamificationStorage.save_quest_progress(quest_progress)
+
     async def get_student_badges(self, student_id: str) -> List[str]:
-        self.get_student_badges = GamificationStorage.get_student_badges
-        return await self.get_student_badges(student_id)
+        return await GamificationStorage.get_student_badges(student_id)
 
     async def get_student_streaks(self, student_id: str) -> Dict[str, Streak]:
-        self.get_student_streaks = GamificationStorage.get_student_streaks
-        return await self.get_student_streaks(student_id)
-    
+        return await GamificationStorage.get_student_streaks(student_id)
+
     async def save_student_level(self, student_level: StudentLevel):
-        """Save student level to database"""
-        self.save_student_level = GamificationStorage.save_student_level
-        await self.save_student_level(student_level)
+        await GamificationStorage.save_student_level(student_level)
 
     async def get_recent_achievements(self, student_id: str, limit: int = 5) -> List[Dict]:
-        self.get_recent_achievements = GamificationStorage.get_recent_achievements
-        return await self.get_recent_achievements(student_id, limit)
+        return await GamificationStorage.get_recent_achievements(student_id, limit)
     
 
     async def process_student_activity(self, student_id: str, activity_type: str, activity_data: Dict = None) -> Dict:
@@ -914,10 +897,10 @@ class GamificationEngine:
             # 1. Calculate and award XP
             xp_result = await XPCalculator.calculate_activity_xp(student_id, activity_type, activity_data)
             xp_info = await self.add_xp(student_id, xp_result["total_xp"], f"Activity: {activity_type}")
-            
+
             results["xp_gained"] = xp_result["total_xp"]
             results["xp_details"] = xp_result
-            results["level_up"] = xp_info["level_up"]
+            results["level_up"] = xp_info.get("level_up", False)
             results["level_info"] = xp_info
             
             # 2. Update student stats
@@ -1085,7 +1068,19 @@ class GamificationEngine:
                     "total_count": total_badges,
                     "by_type": badges_by_type,
                     "completion_rate": (total_badges / len(self.badges)) * 100,
-                    "recent": recent_achievements
+                    "recent": recent_achievements,
+                    "earned_ids": badges,
+                    "catalog": [
+                        {
+                            "id": badge.id,
+                            "name": badge.name,
+                            "description": badge.description,
+                            "icon": badge.icon,
+                            "difficulty": badge.difficulty.value,
+                            "xp_reward": badge.xp_reward,
+                            "earned": badge.id in badges
+                        } for badge in self.badges.values()
+                    ]
                 },
                 "streaks": {
                     "active_count": active_streak_count,
@@ -1107,6 +1102,7 @@ class GamificationEngine:
                             "description": self.quests[quest.quest_id].description,
                             "progress": quest.progress,
                             "requirements": self.quests[quest.quest_id].requirements,
+                            "xp_reward": self.quests[quest.quest_id].xp_reward,
                             "completion_percentage": self._calculate_quest_completion_percentage(quest)
                         } for quest in active_quests
                     ]
@@ -2365,6 +2361,7 @@ async def finish_reading_session(book_id: str, data: dict, db: Session = Depends
         print(f"Reading session saved to database: {session_id} for chapter {book_id}")
 
         # Update gamification: increment books_read and update streaks
+        gamification_results = {}
         try:
             gamification_results = await gamification_engine.process_student_activity(
                 student_id,
@@ -2384,7 +2381,8 @@ async def finish_reading_session(book_id: str, data: dict, db: Session = Depends
             "message": "Reading session saved",
             "book_id": book_id,
             "session_id": session_id,
-            "results": data
+            "results": data,
+            "gamification": gamification_results
         }
     except Exception as e:
         print(f"Error saving reading session: {e}")

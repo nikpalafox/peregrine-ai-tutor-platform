@@ -52,6 +52,7 @@ class TestReadingSession {
     // The actual matching logic — mirrors reading.js onresult handler
     _runMatching() {
         const allSpoken = this.currentTranscript.toLowerCase()
+            .replace(/[.,:;!?]+/g, ' ')
             .split(/\s+/).filter(w => w.length > 0);
         const realWords = this._filterFillers(allSpoken);
         const expected = this.expectedWords || [];
@@ -64,6 +65,31 @@ class TestReadingSession {
                 matchCount++;
             }
             spokenIdx++;
+        }
+
+        // Tail recovery: if full re-scan couldn't reach high-water mark,
+        // search recent spoken words against expected from the high-water mark.
+        // Requires ≥2 consecutive matches to prevent false positives.
+        if (matchCount <= this._matchedExpectedCount && this._matchedExpectedCount < expected.length) {
+            const recentCount = Math.min(realWords.length, 20);
+            const recentStart = realWords.length - recentCount;
+            let tailExpIdx = this._matchedExpectedCount;
+            let tailSpokenIdx = recentStart;
+            let consecutiveMatches = 0;
+
+            while (tailSpokenIdx < realWords.length && tailExpIdx < expected.length) {
+                if (this._wordsMatch(realWords[tailSpokenIdx], expected[tailExpIdx])) {
+                    consecutiveMatches++;
+                    tailExpIdx++;
+                } else {
+                    consecutiveMatches = 0;
+                }
+                tailSpokenIdx++;
+            }
+
+            if (consecutiveMatches >= 2 || (tailExpIdx - this._matchedExpectedCount) >= 2) {
+                matchCount = Math.max(matchCount, tailExpIdx);
+            }
         }
 
         // High-water mark: only advance, never go back
@@ -526,6 +552,237 @@ console.log('\n--- Test 30: "flies it" not treated as one word ---');
     s.simulateFinalWords('a falcon flies it is fast');
     s.advanceAll();
     assertEqual(s.spokenWords.length, 6, 'All 6 matched — "flies" and "it" are separate');
+})();
+
+console.log('\n--- Test 31: Session restart loses interim words (the "He" bug) ---');
+(function() {
+    const s = new TestReadingSession();
+    s.setupPage('Once upon a time in a cozy little town, there lived a kind and lovable dog named Storm. Storm was a fluffy golden retriever with big, floppy ears and a wagging tail that never stopped. He loved playing fetch with his favorite red ball and going on walks with his best friend, Lily.');
+
+    // Student reads through the passage. Chrome finalizes up to "a wagging"
+    // but keeps "tail that never stopped" as interim.
+    // (In real code, lastSpokenText ends with ' ' from += transcript + ' ')
+    s.simulateInterimWords(
+        'once upon a time in a cozy little town there lived a kind and lovable dog named storm storm was a fluffy golden retriever with big floppy ears and a wagging ',
+        'tail that never stopped'
+    );
+    s.advanceAll();
+    assertEqual(s.spokenWords.length, 35, 'Matched up to "stopped" (35 words)');
+    assertEqual(s.getStuckWord(), 'He', 'Yellow on "He"');
+
+    // NOW: Chrome ends the session. The interim "tail that never stopped" is lost.
+    // With the fix, onend promotes interim to lastSpokenText:
+    //   this.lastSpokenText += this._pendingInterim + ' ';
+    s.lastSpokenText += 'tail that never stopped ';
+
+    // New session starts. Student says "He loved playing fetch..."
+    s.simulateInterimWords(s.lastSpokenText, 'he loved playing fetch');
+    s.advanceAll();
+    assertEqual(s.spokenWords.length, 39, 'Matched through "fetch" after session restart');
+    assert(s.spokenWords.length > 35, '"He" is no longer stuck — highlight advanced past it');
+})();
+
+console.log('\n--- Test 32: Tail recovery saves even when _pendingInterim is missing ---');
+(function() {
+    const s = new TestReadingSession();
+    s.setupPage('Once upon a time in a cozy little town, there lived a kind and lovable dog named Storm. Storm was a fluffy golden retriever with big, floppy ears and a wagging tail that never stopped. He loved playing fetch.');
+
+    // Full match up to "stopped" via interim
+    s.simulateInterimWords(
+        'once upon a time in a cozy little town there lived a kind and lovable dog named storm storm was a fluffy golden retriever with big floppy ears and a wagging',
+        'tail that never stopped'
+    );
+    s.advanceAll();
+    assertEqual(s.spokenWords.length, 35, 'Matched 35 words');
+
+    // Session restarts WITHOUT the _pendingInterim fix: interim lost,
+    // only final text remains (up to "a wagging").
+    // Student says "he loved playing fetch".
+    // The main re-scan only reaches ~31 (below high-water mark of 35),
+    // BUT tail recovery searches recent words from position 35 and finds
+    // "he loved playing fetch" — 4 consecutive matches, so it advances.
+    s.simulateInterimWords(
+        'once upon a time in a cozy little town there lived a kind and lovable dog named storm storm was a fluffy golden retriever with big floppy ears and a wagging',
+        'he loved playing fetch'
+    );
+    s.advanceAll();
+    assert(s.spokenWords.length >= 39, 'Tail recovery bridges gap even without _pendingInterim fix');
+})();
+
+// ===== FIX: Period-joined words (Chrome returns "stopped.He" without space) =====
+
+console.log('\n--- Test 33: Period-joined words "stopped.He" split correctly ---');
+(function() {
+    const s = new TestReadingSession();
+    s.setupPage('tail that never stopped. He loved playing fetch.');
+    // Chrome returns "stopped.He" as a single token with no space
+    s.simulateFinalWords('tail that never stopped.He loved playing fetch');
+    s.advanceAll();
+    assertEqual(s.spokenWords.length, 8, 'All 8 words matched despite period-joined "stopped.He"');
+})();
+
+console.log('\n--- Test 34: Multiple punctuation-joined words ---');
+(function() {
+    const s = new TestReadingSession();
+    s.setupPage('Hello, world! How are you?');
+    // Chrome returns "world!How" joined and "you?" at the end
+    s.simulateFinalWords('hello,world!How are you?');
+    s.advanceAll();
+    assertEqual(s.spokenWords.length, 5, 'All 5 words matched despite joined punctuation');
+})();
+
+console.log('\n--- Test 35: Comma-joined words ---');
+(function() {
+    const s = new TestReadingSession();
+    s.setupPage('big, floppy ears and a wagging tail');
+    // Chrome returns "big,floppy" joined
+    s.simulateFinalWords('big,floppy ears and a wagging tail');
+    s.advanceAll();
+    assertEqual(s.spokenWords.length, 7, 'All 7 words matched despite comma-join');
+})();
+
+console.log('\n--- Test 36: Semicolon and colon joined words ---');
+(function() {
+    const s = new TestReadingSession();
+    s.setupPage('first: read the book; then answer questions.');
+    s.simulateFinalWords('first:read the book;then answer questions');
+    s.advanceAll();
+    assertEqual(s.spokenWords.length, 7, 'All 7 words matched with colon/semicolon joins');
+})();
+
+// ===== FIX: Tail recovery — bridge gaps from lost words =====
+
+console.log('\n--- Test 37: Tail recovery bridges gap from lost words ---');
+(function() {
+    const s = new TestReadingSession();
+    s.setupPage('The dog ran fast. He jumped over the fence.');
+    // Student reads up to "fast" (4 words matched)
+    s.simulateFinalWords('the dog ran fast');
+    s.advanceAll();
+    assertEqual(s.spokenWords.length, 4, 'Matched 4 words');
+    assertEqual(s.getStuckWord(), 'He', 'Yellow on "He"');
+
+    // Session restarts — words "fast" lost, Chrome only has new speech.
+    // Without tail recovery, re-scan from start can't reach high-water mark.
+    // Simulate: lastSpokenText is incomplete (missing "fast"), new speech starts
+    s.lastSpokenText = 'the dog ran ';
+    s.simulateInterimWords(s.lastSpokenText, 'he jumped over the fence');
+    s.advanceAll();
+    assert(s.spokenWords.length >= 9, 'Tail recovery bridged gap — matched through "fence"');
+})();
+
+console.log('\n--- Test 38: Tail recovery requires 2+ matches (no false positives) ---');
+(function() {
+    const s = new TestReadingSession();
+    s.setupPage('The big red fox jumped over the lazy dog quickly.');
+    s.simulateFinalWords('the big red fox jumped');
+    s.advanceAll();
+    assertEqual(s.spokenWords.length, 5, 'Matched 5 words');
+
+    // Simulate lost words with only 1 stray match — should NOT advance
+    // "over" appears in expected but alone is not enough
+    s.lastSpokenText = 'the big red ';
+    s.simulateInterimWords(s.lastSpokenText, 'something random words');
+    s.advanceAll();
+    assertEqual(s.spokenWords.length, 5, 'No false advance from random words');
+})();
+
+console.log('\n--- Test 39: Tail recovery with full passage and session restart ---');
+(function() {
+    const s = new TestReadingSession();
+    s.setupPage('Once upon a time in a cozy little town, there lived a kind and lovable dog named Storm. Storm was a fluffy golden retriever with big, floppy ears and a wagging tail that never stopped. He loved playing fetch with his favorite red ball and going on walks with his best friend, Lily.');
+
+    // Read up to "stopped" (35 words matched) via interim
+    s.simulateInterimWords(
+        'once upon a time in a cozy little town there lived a kind and lovable dog named storm storm was a fluffy golden retriever with big floppy ears and a wagging ',
+        'tail that never stopped'
+    );
+    s.advanceAll();
+    assertEqual(s.spokenWords.length, 35, 'Matched 35 words up to "stopped"');
+
+    // Session restarts — several words lost (no _pendingInterim promotion)
+    // AND Chrome starts fresh. Only "wagging" survived in lastSpokenText.
+    // Student says "He loved playing fetch with his favorite red ball"
+    s.lastSpokenText = 'once upon a time in a cozy little town there lived a kind and lovable dog named storm storm was a fluffy golden retriever with big floppy ears and a wagging ';
+    s.simulateInterimWords(s.lastSpokenText, 'he loved playing fetch with his favorite red ball');
+    s.advanceAll();
+    assert(s.spokenWords.length >= 43, 'Tail recovery matched "He loved playing fetch with his favorite red ball"');
+})();
+
+console.log('\n--- Test 40: Tail recovery across multiple sentence boundaries ---');
+(function() {
+    const s = new TestReadingSession();
+    s.setupPage('She sat down. The cat purred. It was warm.');
+    s.simulateFinalWords('she sat down');
+    s.advanceAll();
+    assertEqual(s.spokenWords.length, 3, 'Matched first sentence (3 words)');
+
+    // Big gap — "The cat purred" lost entirely. Student says "It was warm"
+    s.lastSpokenText = 'she sat ';
+    s.simulateInterimWords(s.lastSpokenText, 'the cat purred it was warm');
+    s.advanceAll();
+    assert(s.spokenWords.length >= 9, 'Recovered across two sentence boundaries');
+})();
+
+console.log('\n--- Test 41: Period-joined words + tail recovery combined ---');
+(function() {
+    const s = new TestReadingSession();
+    s.setupPage('The ball bounced high. She caught it easily.');
+    s.simulateFinalWords('the ball bounced high');
+    s.advanceAll();
+    assertEqual(s.spokenWords.length, 4, 'Matched 4 words');
+
+    // Session restart, Chrome returns "high.She" joined AND words are lost
+    s.lastSpokenText = 'the ball bounced ';
+    s.simulateInterimWords(s.lastSpokenText, 'high.She caught it easily');
+    s.advanceAll();
+    assert(s.spokenWords.length >= 8, 'Both fixes work together — period-joined + tail recovery');
+})();
+
+console.log('\n--- Test 42: Tail recovery does not go backward ---');
+(function() {
+    const s = new TestReadingSession();
+    s.setupPage('Red fox brown fox blue fox green fox.');
+    s.simulateFinalWords('red fox brown fox blue fox');
+    s.advanceAll();
+    assertEqual(s.spokenWords.length, 6, 'Matched 6 words');
+
+    // Student repeats earlier words — should not go backward
+    s.simulateFinalWords('red fox brown fox blue fox');
+    s.advanceAll();
+    assertEqual(s.spokenWords.length, 6, 'No backward movement');
+})();
+
+console.log('\n--- Test 43: Tail recovery with 300ms gap simulation ---');
+(function() {
+    const s = new TestReadingSession();
+    s.setupPage('I love to read books every single day.');
+    // First session: matched "I love to read books" (5 words)
+    s.simulateFinalWords('i love to read books');
+    s.advanceAll();
+    assertEqual(s.spokenWords.length, 5, 'Matched 5 words');
+
+    // 300ms gap — "books" was only interim and got lost
+    // New session picks up with "every single day"
+    s.lastSpokenText = 'i love to read ';
+    s.simulateInterimWords(s.lastSpokenText, 'every single day');
+    s.advanceAll();
+    assert(s.spokenWords.length >= 8, 'Bridged 300ms gap — matched "every single day"');
+})();
+
+console.log('\n--- Test 44: Original "He" bug fully resolved with both fixes ---');
+(function() {
+    const s = new TestReadingSession();
+    s.setupPage('Once upon a time in a cozy little town, there lived a kind and lovable dog named Storm. Storm was a fluffy golden retriever with big, floppy ears and a wagging tail that never stopped. He loved playing fetch with his favorite red ball and going on walks with his best friend, Lily.');
+
+    // Scenario: Chrome returns "stopped.He" joined at sentence boundary
+    // AND some words are lost during session restart
+    s.simulateFinalWords(
+        'once upon a time in a cozy little town there lived a kind and lovable dog named storm storm was a fluffy golden retriever with big floppy ears and a wagging tail that never stopped.He loved playing fetch with his favorite red ball and going on walks with his best friend lily'
+    );
+    s.advanceAll();
+    // With period splitting, "stopped.He" → "stopped" + "He", everything matches
+    assert(s.spokenWords.length >= 45, 'Full passage matched with period-joined "stopped.He"');
 })();
 
 // --- Summary ---

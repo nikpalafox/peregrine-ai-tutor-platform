@@ -38,6 +38,7 @@ class ReadingSession {
         this.ttsVoiceReady = false; // Whether we've resolved the best voice
         this.isSpeaking = false; // Track if TTS is currently speaking
         this._ttsAudio = null; // Current ElevenLabs audio element
+        this._pendingInterim = ''; // Last interim transcript (promoted to lastSpokenText on session end)
 
         // Pre-load voices (Chrome loads them asynchronously)
         this._initTTSVoices();
@@ -210,12 +211,16 @@ class ReadingSession {
             // Build the full running transcript (final text + current interim)
             this.currentTranscript = this.lastSpokenText + interimTranscript;
 
+            // Save interim so we can recover it if the session ends unexpectedly
+            this._pendingInterim = interimTranscript;
+
             // --- Word position tracking ---
             // Re-scan the FULL transcript (final + interim) each time.
             // This ensures words are tracked as soon as they appear,
             // even if Chrome hasn't marked them as "final" yet.
             // A high-water mark prevents going backward when interim changes.
             const allSpoken = this.currentTranscript.toLowerCase()
+                .replace(/[.,:;!?]+/g, ' ')
                 .split(/\s+/).filter(w => w.length > 0);
             const realWords = this._filterFillers(allSpoken);
             const expected = this.expectedWords || [];
@@ -228,6 +233,41 @@ class ReadingSession {
                     matchCount++;
                 }
                 spokenIdx++;
+            }
+
+            // Tail recovery: if the full re-scan couldn't reach the high-water
+            // mark (because words were lost during session restarts, the 300ms
+            // restart delay, or Chrome simply not recognizing some words), we
+            // search the RECENT spoken words against expected words starting
+            // from the high-water mark position. This bridges gaps and allows
+            // forward progress. Requires ≥2 consecutive matches to prevent
+            // false positives from stray words.
+            if (matchCount <= this._matchedExpectedCount && this._matchedExpectedCount < expected.length) {
+                const recentCount = Math.min(realWords.length, 20);
+                const recentStart = realWords.length - recentCount;
+                let tailExpIdx = this._matchedExpectedCount;
+                let tailSpokenIdx = recentStart;
+                let consecutiveMatches = 0;
+                let firstMatchExpIdx = tailExpIdx;
+
+                while (tailSpokenIdx < realWords.length && tailExpIdx < expected.length) {
+                    if (this._wordsMatch(realWords[tailSpokenIdx], expected[tailExpIdx])) {
+                        if (consecutiveMatches === 0) {
+                            firstMatchExpIdx = tailExpIdx;
+                        }
+                        consecutiveMatches++;
+                        tailExpIdx++;
+                    } else {
+                        // Reset consecutive counter but keep searching
+                        consecutiveMatches = 0;
+                    }
+                    tailSpokenIdx++;
+                }
+
+                // Only accept if we found at least 2 consecutive matches
+                if (consecutiveMatches >= 2 || (tailExpIdx - this._matchedExpectedCount) >= 2) {
+                    matchCount = Math.max(matchCount, tailExpIdx);
+                }
             }
 
             // Only advance if we found MORE matches than before (high-water mark)
@@ -277,6 +317,17 @@ class ReadingSession {
         // keep listening, while PRESERVING all tracking state so the
         // highlight doesn't reset.
         this.recognition.onend = () => {
+            // Promote any pending interim words to lastSpokenText.
+            // Chrome sometimes ends a session without finalizing its last
+            // interim result. Those words would be permanently lost when
+            // the new session starts, creating a gap the matcher can never
+            // bridge (e.g. "tail that never stopped" missing between
+            // sessions causes "He" to never match).
+            if (this._pendingInterim) {
+                this.lastSpokenText += this._pendingInterim + ' ';
+                this._pendingInterim = '';
+            }
+
             // If TTS is speaking, we intentionally stopped — don't restart
             if (this.isSpeaking) return;
 
@@ -372,6 +423,7 @@ class ReadingSession {
         container.appendChild(textContainer);
         this.lastSpokenText = '';
         this.currentTranscript = '';
+        this._pendingInterim = '';
         this.lastFeedbackCount = 0;
         this.lastUpdateTime = 0;
         this.lastSpokenWordsCount = 0;
@@ -421,6 +473,7 @@ class ReadingSession {
             if (this._advanceTimer) { clearTimeout(this._advanceTimer); this._advanceTimer = null; }
             this.lastSpokenText = '';
             this.currentTranscript = '';
+            this._pendingInterim = '';
             this.isListening = true;
             this.pauseStartTime = null;
             this.lastProgressIndex = 0;
@@ -846,7 +899,7 @@ class ReadingSession {
         const modalHTML = `
             <div class="modal-overlay">
                 <div class="modal-card">
-                    <h3>Reading Results</h3>
+                    <h3>&#127881; Reading Results</h3>
                     <div class="results-grid">
                         <div class="result-stat">
                             <div class="result-stat-value purple">${accuracy}%</div>
@@ -856,6 +909,11 @@ class ReadingSession {
                             <div class="result-stat-value green">${wpm}</div>
                             <div class="result-stat-label">Words per Minute</div>
                         </div>
+                    </div>
+                    <div id="xpEarnedPreview" style="text-align: center; margin-bottom: 16px; display: none;">
+                        <span style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 16px; background: linear-gradient(135deg, #eef2ff, #e0e7ff); border-radius: 100px; font-size: 15px; font-weight: 700; color: #6366f1;">
+                            &#x26A1; <span id="xpEarnedAmount">+0 XP</span>
+                        </span>
                     </div>
                     <div>
                         <label class="modal-label">
@@ -898,7 +956,21 @@ class ReadingSession {
                 };
 
                 try {
-                    await apiRequest('POST', `/reading/finish/${this.bookId}`, payload);
+                    const response = await apiRequest('POST', `/reading/finish/${this.bookId}`, payload);
+
+                    // Save gamification results for dashboard celebrations
+                    if (response && response.gamification) {
+                        const gam = response.gamification;
+                        sessionStorage.setItem('pendingCelebrations', JSON.stringify({
+                            xp_gained: gam.xp_gained || 0,
+                            level_up: gam.level_up || false,
+                            level_info: gam.level_info || null,
+                            new_badges: gam.new_badges || [],
+                            completed_quests: gam.completed_quests || [],
+                            streak_updates: gam.streak_updates || {}
+                        }));
+                    }
+
                     // Remove modal and redirect
                     modalContainer.remove();
                     window.location.href = 'dashboard.html';
