@@ -20,7 +20,7 @@ from dotenv import load_dotenv
 # Import our models and database
 from models.auth import UserAuth, UserCreate, UserInDB, Token, TokenData
 from models.reading import Chapter as ChapterPydantic, ReadingSession as ReadingSessionPydantic
-from models.schema import Base, User, Chapter, ReadingSession
+from models.schema import Base, User, Chapter, ReadingSession, StudentStreak
 from database import engine, get_db
 from utils import format_xp_display, get_difficulty_color, create_achievement_notification
 from gamification import XPCalculator, QuestGenerator, get_student_rank
@@ -1253,30 +1253,79 @@ class GamificationStorage:
     
     @staticmethod
     async def get_streak(student_id: str, streak_type: str) -> Optional[Streak]:
-        """Get a specific streak for a student"""
-        if student_id not in student_streaks_db:
-            student_streaks_db[student_id] = {}
-        
-        return student_streaks_db[student_id].get(streak_type)
-    
+        """Get a specific streak for a student (from database)"""
+        from database import SessionLocal
+        db = SessionLocal()
+        try:
+            row = db.query(StudentStreak).filter(
+                StudentStreak.student_id == student_id,
+                StudentStreak.streak_type == streak_type
+            ).first()
+            if not row:
+                return None
+            return Streak(
+                student_id=row.student_id,
+                streak_type=row.streak_type,
+                current_count=row.current_count,
+                max_count=row.max_count,
+                last_activity_date=row.last_activity_date or datetime.now(),
+                is_active=row.is_active
+            )
+        finally:
+            db.close()
+
     @staticmethod
     async def save_streak(streak: Streak):
-        """Save streak to storage"""
-        if streak.student_id not in student_streaks_db:
-            student_streaks_db[streak.student_id] = {}
-        
-        student_streaks_db[streak.student_id][streak.streak_type] = streak
-        
-        if streak.is_active:
-            print(f"🔥 Streak updated: {streak.streak_type} - {streak.current_count} days for student {streak.student_id}")
-    
+        """Save streak to database"""
+        from database import SessionLocal
+        db = SessionLocal()
+        try:
+            row = db.query(StudentStreak).filter(
+                StudentStreak.student_id == streak.student_id,
+                StudentStreak.streak_type == streak.streak_type
+            ).first()
+            if row:
+                row.current_count = streak.current_count
+                row.max_count = streak.max_count
+                row.last_activity_date = streak.last_activity_date
+                row.is_active = streak.is_active
+            else:
+                row = StudentStreak(
+                    student_id=streak.student_id,
+                    streak_type=streak.streak_type,
+                    current_count=streak.current_count,
+                    max_count=streak.max_count,
+                    last_activity_date=streak.last_activity_date,
+                    is_active=streak.is_active
+                )
+                db.add(row)
+            db.commit()
+            if streak.is_active:
+                print(f"🔥 Streak updated: {streak.streak_type} - {streak.current_count} days for student {streak.student_id}")
+        finally:
+            db.close()
+
     @staticmethod
     async def get_student_streaks(student_id: str) -> Dict[str, Streak]:
-        """Get all streaks for a student"""
-        if student_id not in student_streaks_db:
-            return {}
-        
-        return student_streaks_db[student_id]
+        """Get all streaks for a student (from database)"""
+        from database import SessionLocal
+        db = SessionLocal()
+        try:
+            rows = db.query(StudentStreak).filter(
+                StudentStreak.student_id == student_id
+            ).all()
+            return {
+                row.streak_type: Streak(
+                    student_id=row.student_id,
+                    streak_type=row.streak_type,
+                    current_count=row.current_count,
+                    max_count=row.max_count,
+                    last_activity_date=row.last_activity_date or datetime.now(),
+                    is_active=row.is_active
+                ) for row in rows
+            }
+        finally:
+            db.close()
     
     @staticmethod
     async def get_active_quests(student_id: str) -> List[StudentQuest]:
@@ -2447,7 +2496,7 @@ async def transcribe_audio(audio: UploadFile = File(...)):
 ## ─── Text-to-speech (ElevenLabs) ────────────────────────────────────────
 
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
-ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "FGY2WhTYpPnrIDTdsKH5")  # "Laura" - quirky, sunny, enthusiastic
+ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "XB0fDUnXU5powFXDhCwa")  # "Charlotte" - warm, clear, friendly teacher
 
 class TTSRequest(BaseModel):
     text: str
@@ -2482,9 +2531,9 @@ async def text_to_speech(request: TTSRequest):
         "text": text,
         "model_id": "eleven_turbo_v2",
         "voice_settings": {
-            "stability": 0.55,
-            "similarity_boost": 0.75,
-            "style": 0.45,
+            "stability": 0.6,
+            "similarity_boost": 0.8,
+            "style": 0.35,
             "use_speaker_boost": True
         }
     }

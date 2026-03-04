@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, DateTime, Float, ForeignKey, Table
+from sqlalchemy import Column, String, Integer, DateTime, Float, ForeignKey, Table, Boolean
 from sqlalchemy.orm import relationship
 from database import Base
 from datetime import datetime
@@ -45,3 +45,14 @@ class ReadingSession(Base):
     
     user = relationship("User", back_populates="reading_sessions")
     chapter = relationship("Chapter", back_populates="reading_sessions")
+
+class StudentStreak(Base):
+    __tablename__ = "student_streaks"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    student_id = Column(String, ForeignKey("users.id"), index=True)
+    streak_type = Column(String, default="daily_study")
+    current_count = Column(Integer, default=0)
+    max_count = Column(Integer, default=0)
+    last_activity_date = Column(DateTime, nullable=True)
+    is_active = Column(Boolean, default=True)
