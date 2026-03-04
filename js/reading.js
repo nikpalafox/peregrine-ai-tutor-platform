@@ -185,7 +185,8 @@ class ReadingSession {
         // Prefer standard SpeechRecognition where available
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         if (!SpeechRecognition) {
-            console.warn('Speech recognition not supported');
+            console.log('SpeechRecognition not available — using Whisper fallback');
+            this._useWhisperFallback = true;
             return;
         }
 
@@ -231,7 +232,29 @@ class ReadingSession {
             while (spokenIdx < realWords.length && matchCount < expected.length) {
                 if (this._wordsMatch(realWords[spokenIdx], expected[matchCount])) {
                     matchCount++;
+                    spokenIdx++;
+                    continue;
                 }
+
+                // After establishing position (3+ matches), allow skipping 1-2
+                // expected words that were lost during speech recognition
+                // restarts at sentence boundaries. Require the NEXT spoken word
+                // to also match to prevent false skips from common words.
+                if (matchCount >= 3 && spokenIdx + 1 < realWords.length) {
+                    let skipped = false;
+                    for (let skip = 1; skip <= 2 && matchCount + skip < expected.length; skip++) {
+                        if (this._wordsMatch(realWords[spokenIdx], expected[matchCount + skip]) &&
+                            matchCount + skip + 1 < expected.length &&
+                            this._wordsMatch(realWords[spokenIdx + 1], expected[matchCount + skip + 1])) {
+                            matchCount += skip + 2;
+                            spokenIdx += 2;
+                            skipped = true;
+                            break;
+                        }
+                    }
+                    if (skipped) continue;
+                }
+
                 spokenIdx++;
             }
 
@@ -240,33 +263,39 @@ class ReadingSession {
             // restart delay, or Chrome simply not recognizing some words), we
             // search the RECENT spoken words against expected words starting
             // from the high-water mark position. This bridges gaps and allows
-            // forward progress. Requires ≥2 consecutive matches to prevent
-            // false positives from stray words.
+            // forward progress. We also try skipping up to 3 expected words
+            // (to handle words lost at sentence boundaries during restarts).
+            // Requires ≥2 consecutive matches to prevent false positives.
             if (matchCount <= this._matchedExpectedCount && this._matchedExpectedCount < expected.length) {
                 const recentCount = Math.min(realWords.length, 20);
                 const recentStart = realWords.length - recentCount;
-                let tailExpIdx = this._matchedExpectedCount;
-                let tailSpokenIdx = recentStart;
-                let consecutiveMatches = 0;
-                let firstMatchExpIdx = tailExpIdx;
+                let bestTailEnd = this._matchedExpectedCount;
 
-                while (tailSpokenIdx < realWords.length && tailExpIdx < expected.length) {
-                    if (this._wordsMatch(realWords[tailSpokenIdx], expected[tailExpIdx])) {
-                        if (consecutiveMatches === 0) {
-                            firstMatchExpIdx = tailExpIdx;
+                // Try starting from the high-water mark, and also skip 1-3
+                // expected words to handle words lost during session restarts
+                const maxSkip = Math.min(3, expected.length - this._matchedExpectedCount - 1);
+                for (let startSkip = 0; startSkip <= maxSkip; startSkip++) {
+                    let tailExpIdx = this._matchedExpectedCount + startSkip;
+                    let tailSpokenIdx = recentStart;
+                    let consecutiveMatches = 0;
+
+                    while (tailSpokenIdx < realWords.length && tailExpIdx < expected.length) {
+                        if (this._wordsMatch(realWords[tailSpokenIdx], expected[tailExpIdx])) {
+                            consecutiveMatches++;
+                            tailExpIdx++;
+                        } else {
+                            consecutiveMatches = 0;
                         }
-                        consecutiveMatches++;
-                        tailExpIdx++;
-                    } else {
-                        // Reset consecutive counter but keep searching
-                        consecutiveMatches = 0;
+                        tailSpokenIdx++;
                     }
-                    tailSpokenIdx++;
+
+                    if (consecutiveMatches >= 2 && tailExpIdx > bestTailEnd) {
+                        bestTailEnd = tailExpIdx;
+                    }
                 }
 
-                // Only accept if we found at least 2 consecutive matches
-                if (consecutiveMatches >= 2 || (tailExpIdx - this._matchedExpectedCount) >= 2) {
-                    matchCount = Math.max(matchCount, tailExpIdx);
+                if (bestTailEnd > matchCount) {
+                    matchCount = bestTailEnd;
                 }
             }
 
@@ -404,7 +433,9 @@ class ReadingSession {
         const pageText = this.pages[this.currentIndex] || '';
 
         // Set up word arrays BEFORE rendering so highlightCurrentWord works
-        this.displayWords = pageText.split(' ').filter(w => w.trim().length > 0);
+        // Split on ANY whitespace (spaces, newlines, tabs) so that sentence
+        // boundaries like "stopped.\nHe" become two separate words.
+        this.displayWords = pageText.split(/\s+/).filter(w => w.length > 0);
         this.expectedWords = this.displayWords.map(w => w.toLowerCase());
         this.spokenWords = [];
         this._matchedExpectedCount = 0;
@@ -466,28 +497,31 @@ class ReadingSession {
     }
 
     startListening() {
-        if (this.recognition) {
-            this.spokenWords = [];
-            this._matchedExpectedCount = 0;
-            this._advanceQueue = [];
-            if (this._advanceTimer) { clearTimeout(this._advanceTimer); this._advanceTimer = null; }
-            this.lastSpokenText = '';
-            this.currentTranscript = '';
-            this._pendingInterim = '';
-            this.isListening = true;
-            this.pauseStartTime = null;
-            this.lastProgressIndex = 0;
-            this.lastProgressTime = Date.now();
-            this.lastSpeechActivityTime = Date.now();
-            this.feedbackInFlight = false;
-            this.isSpeaking = false;
+        // Reset tracking state
+        this.spokenWords = [];
+        this._matchedExpectedCount = 0;
+        this._advanceQueue = [];
+        if (this._advanceTimer) { clearTimeout(this._advanceTimer); this._advanceTimer = null; }
+        this.lastSpokenText = '';
+        this.currentTranscript = '';
+        this._pendingInterim = '';
+        this.isListening = true;
+        this.pauseStartTime = null;
+        this.lastProgressIndex = 0;
+        this.lastProgressTime = Date.now();
+        this.lastSpeechActivityTime = Date.now();
+        this.feedbackInFlight = false;
+        this.isSpeaking = false;
 
-            // Show a text-only greeting (don't speak it — let the student start)
-            this.updateAgentFeedback("I'm listening! Start reading when you're ready. I'll help if you get stuck.");
+        // Show a text-only greeting (don't speak it — let the student start)
+        this.updateAgentFeedback("I'm listening! Start reading when you're ready. I'll help if you get stuck.");
 
-            // Check for struggles periodically (every 3 seconds)
-            this._struggleTimer = setInterval(() => this.checkForStruggle(), 3000);
+        // Check for struggles periodically (every 3 seconds)
+        this._struggleTimer = setInterval(() => this.checkForStruggle(), 3000);
 
+        if (this._useWhisperFallback) {
+            this._startWhisperRecognition();
+        } else if (this.recognition) {
             try {
                 this.recognition.start();
             } catch (e) {
@@ -497,30 +531,166 @@ class ReadingSession {
     }
 
     stopListening() {
-        if (this.recognition) {
-            this.isListening = false;
-            // Clear word advance animation
-            if (this._advanceTimer) { clearTimeout(this._advanceTimer); this._advanceTimer = null; }
-            this._advanceQueue = [];
-            this.pauseStartTime = null;
-            // Clear struggle timer
-            if (this._struggleTimer) {
-                clearInterval(this._struggleTimer);
-                this._struggleTimer = null;
-            }
-            // Stop ElevenLabs audio if playing
-            if (this._ttsAudio) {
-                this._ttsAudio.pause();
-                this._ttsAudio.currentTime = 0;
-                this._ttsAudio = null;
-            }
-            // Stop browser TTS if speaking
-            if (this.tts) this.tts.cancel();
-            this.isSpeaking = false;
+        this.isListening = false;
+        // Clear word advance animation
+        if (this._advanceTimer) { clearTimeout(this._advanceTimer); this._advanceTimer = null; }
+        this._advanceQueue = [];
+        this.pauseStartTime = null;
+        // Clear struggle timer
+        if (this._struggleTimer) {
+            clearInterval(this._struggleTimer);
+            this._struggleTimer = null;
+        }
+        // Stop ElevenLabs audio if playing
+        if (this._ttsAudio) {
+            this._ttsAudio.pause();
+            this._ttsAudio.currentTime = 0;
+            this._ttsAudio = null;
+        }
+        // Stop browser TTS if speaking
+        if (this.tts) this.tts.cancel();
+        this.isSpeaking = false;
+
+        if (this._useWhisperFallback) {
+            this._stopWhisperRecognition();
+        } else if (this.recognition) {
             try {
                 this.recognition.stop();
             } catch (e) {}
         }
+    }
+
+    // ── Whisper fallback for mobile (MediaRecorder + server-side Whisper) ──
+
+    async _startWhisperRecognition() {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            this._whisperStream = stream;
+
+            // Pick a supported MIME type
+            const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+                ? 'audio/webm;codecs=opus'
+                : MediaRecorder.isTypeSupported('audio/mp4')
+                    ? 'audio/mp4'
+                    : '';
+
+            this._mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+            this._audioChunks = [];
+            this._whisperTranscribing = false;
+
+            this._mediaRecorder.ondataavailable = (event) => {
+                if (event.data && event.data.size > 0) {
+                    this._audioChunks.push(event.data);
+                }
+            };
+
+            // Record in 3-second slices
+            this._mediaRecorder.start(3000);
+
+            // Send audio for transcription every 3 seconds
+            this._whisperInterval = setInterval(() => this._sendWhisperChunk(), 3000);
+        } catch (err) {
+            console.error('Microphone access failed:', err);
+            this.updateAgentFeedback('Could not access microphone. Please allow microphone access and try again.');
+        }
+    }
+
+    _stopWhisperRecognition() {
+        if (this._whisperInterval) {
+            clearInterval(this._whisperInterval);
+            this._whisperInterval = null;
+        }
+        if (this._mediaRecorder && this._mediaRecorder.state !== 'inactive') {
+            this._mediaRecorder.stop();
+        }
+        if (this._whisperStream) {
+            this._whisperStream.getTracks().forEach(t => t.stop());
+            this._whisperStream = null;
+        }
+        this._audioChunks = [];
+    }
+
+    async _sendWhisperChunk() {
+        if (!this._audioChunks.length || this._whisperTranscribing || !this.isListening) return;
+        this._whisperTranscribing = true;
+
+        // Grab all accumulated chunks and send as one blob
+        const blob = new Blob(this._audioChunks, {
+            type: this._mediaRecorder?.mimeType || 'audio/webm'
+        });
+
+        // Keep chunks for cumulative transcription (Whisper works better
+        // with longer audio). We'll send the full recording each time.
+        const formData = new FormData();
+        formData.append('audio', blob, 'recording.webm');
+
+        try {
+            const resp = await fetch('/api/reading/transcribe', {
+                method: 'POST',
+                body: formData
+            });
+            if (resp.ok) {
+                const data = await resp.json();
+                if (data.text) {
+                    this.currentTranscript = data.text;
+                    this.lastSpeechActivityTime = Date.now();
+                    this.pauseStartTime = null;
+                    this._runWhisperMatching();
+                }
+            }
+        } catch (err) {
+            console.error('Whisper transcription error:', err);
+        } finally {
+            this._whisperTranscribing = false;
+        }
+    }
+
+    /** Run the same matching logic used in the SpeechRecognition handler */
+    _runWhisperMatching() {
+        const allSpoken = this.currentTranscript.toLowerCase()
+            .replace(/[.,:;!?]+/g, ' ')
+            .split(/\s+/).filter(w => w.length > 0);
+        const realWords = this._filterFillers(allSpoken);
+        const expected = this.expectedWords || [];
+
+        // Sequential match (same algorithm as onresult)
+        let matchCount = 0;
+        let spokenIdx = 0;
+        while (spokenIdx < realWords.length && matchCount < expected.length) {
+            if (this._wordsMatch(realWords[spokenIdx], expected[matchCount])) {
+                matchCount++;
+                spokenIdx++;
+                continue;
+            }
+            if (matchCount >= 3 && spokenIdx + 1 < realWords.length) {
+                let skipped = false;
+                for (let skip = 1; skip <= 2 && matchCount + skip < expected.length; skip++) {
+                    if (this._wordsMatch(realWords[spokenIdx], expected[matchCount + skip]) &&
+                        matchCount + skip + 1 < expected.length &&
+                        this._wordsMatch(realWords[spokenIdx + 1], expected[matchCount + skip + 1])) {
+                        matchCount += skip + 2;
+                        spokenIdx += 2;
+                        skipped = true;
+                        break;
+                    }
+                }
+                if (skipped) continue;
+            }
+            spokenIdx++;
+        }
+
+        const newMatches = matchCount - this._matchedExpectedCount;
+        if (newMatches > 0) {
+            this._matchedExpectedCount = matchCount;
+            for (let i = 0; i < newMatches; i++) {
+                this._advanceQueue.push(1);
+            }
+            if (!this._advanceTimer) {
+                this._advanceOneWord();
+            }
+        }
+
+        this.updateTranscriptDisplay();
     }
     
     /**

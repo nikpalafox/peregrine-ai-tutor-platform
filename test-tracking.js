@@ -63,32 +63,63 @@ class TestReadingSession {
         while (spokenIdx < realWords.length && matchCount < expected.length) {
             if (this._wordsMatch(realWords[spokenIdx], expected[matchCount])) {
                 matchCount++;
+                spokenIdx++;
+                continue;
             }
+
+            // After establishing position (3+ matches), allow skipping 1-2
+            // expected words lost during speech recognition restarts at
+            // sentence boundaries. Require NEXT spoken word to also match.
+            if (matchCount >= 3 && spokenIdx + 1 < realWords.length) {
+                let skipped = false;
+                for (let skip = 1; skip <= 2 && matchCount + skip < expected.length; skip++) {
+                    if (this._wordsMatch(realWords[spokenIdx], expected[matchCount + skip]) &&
+                        matchCount + skip + 1 < expected.length &&
+                        this._wordsMatch(realWords[spokenIdx + 1], expected[matchCount + skip + 1])) {
+                        matchCount += skip + 2;
+                        spokenIdx += 2;
+                        skipped = true;
+                        break;
+                    }
+                }
+                if (skipped) continue;
+            }
+
             spokenIdx++;
         }
 
         // Tail recovery: if full re-scan couldn't reach high-water mark,
         // search recent spoken words against expected from the high-water mark.
-        // Requires ≥2 consecutive matches to prevent false positives.
+        // Also try skipping 1-3 expected words to handle words lost at
+        // sentence boundaries. Requires ≥2 consecutive matches.
         if (matchCount <= this._matchedExpectedCount && this._matchedExpectedCount < expected.length) {
             const recentCount = Math.min(realWords.length, 20);
             const recentStart = realWords.length - recentCount;
-            let tailExpIdx = this._matchedExpectedCount;
-            let tailSpokenIdx = recentStart;
-            let consecutiveMatches = 0;
+            let bestTailEnd = this._matchedExpectedCount;
 
-            while (tailSpokenIdx < realWords.length && tailExpIdx < expected.length) {
-                if (this._wordsMatch(realWords[tailSpokenIdx], expected[tailExpIdx])) {
-                    consecutiveMatches++;
-                    tailExpIdx++;
-                } else {
-                    consecutiveMatches = 0;
+            const maxSkip = Math.min(3, expected.length - this._matchedExpectedCount - 1);
+            for (let startSkip = 0; startSkip <= maxSkip; startSkip++) {
+                let tailExpIdx = this._matchedExpectedCount + startSkip;
+                let tailSpokenIdx = recentStart;
+                let consecutiveMatches = 0;
+
+                while (tailSpokenIdx < realWords.length && tailExpIdx < expected.length) {
+                    if (this._wordsMatch(realWords[tailSpokenIdx], expected[tailExpIdx])) {
+                        consecutiveMatches++;
+                        tailExpIdx++;
+                    } else {
+                        consecutiveMatches = 0;
+                    }
+                    tailSpokenIdx++;
                 }
-                tailSpokenIdx++;
+
+                if (consecutiveMatches >= 2 && tailExpIdx > bestTailEnd) {
+                    bestTailEnd = tailExpIdx;
+                }
             }
 
-            if (consecutiveMatches >= 2 || (tailExpIdx - this._matchedExpectedCount) >= 2) {
-                matchCount = Math.max(matchCount, tailExpIdx);
+            if (bestTailEnd > matchCount) {
+                matchCount = bestTailEnd;
             }
         }
 
@@ -129,7 +160,7 @@ class TestReadingSession {
     }
 
     setupPage(text) {
-        this.displayWords = text.split(' ').filter(w => w.trim().length > 0);
+        this.displayWords = text.split(/\s+/).filter(w => w.length > 0);
         this.expectedWords = this.displayWords.map(w => w.toLowerCase());
         this.spokenWords = [];
         this._matchedExpectedCount = 0;
@@ -783,6 +814,79 @@ console.log('\n--- Test 44: Original "He" bug fully resolved with both fixes ---
     s.advanceAll();
     // With period splitting, "stopped.He" → "stopped" + "He", everything matches
     assert(s.spokenWords.length >= 45, 'Full passage matched with period-joined "stopped.He"');
+})();
+
+// === NEW: Tests for sentence boundary fixes (newlines in content) ===
+
+console.log('\n--- Test 45: Newline between sentences in page text ---');
+(function() {
+    const s = new TestReadingSession();
+    // Simulate content with newline between sentences (common in AI-generated text)
+    s.setupPage('The cat stopped.\nHe went home.');
+    assertEqual(s.displayWords.length, 6, '6 words (newline correctly splits "stopped." and "He")');
+    assertEqual(s.displayWords[2], 'stopped.', 'Word 3 is "stopped." not "stopped.\\nHe"');
+    assertEqual(s.displayWords[3], 'He', 'Word 4 is "He"');
+    s.simulateFinalWords('the cat stopped he went home');
+    s.advanceAll();
+    assertEqual(s.spokenWords.length, 6, 'All 6 words matched across newline boundary');
+})();
+
+console.log('\n--- Test 46: Multiple newlines in content ---');
+(function() {
+    const s = new TestReadingSession();
+    s.setupPage('First sentence.\nSecond sentence.\nThird sentence.');
+    assertEqual(s.displayWords.length, 6, '6 words split correctly across newlines');
+    s.simulateFinalWords('first sentence second sentence third sentence');
+    s.advanceAll();
+    assertEqual(s.spokenWords.length, 6, 'All 6 matched');
+})();
+
+console.log('\n--- Test 47: Skip 1 expected word at sentence boundary ---');
+(function() {
+    const s = new TestReadingSession();
+    s.setupPage('The cat stopped. He went home quickly.');
+    // User reads first 3 words, then mic misses "He" during session restart
+    s.simulateFinalWords('the cat stopped went home quickly');
+    s.advanceAll();
+    // Should skip "He" (1 expected word) and advance past all 7 expected words
+    assertEqual(s.spokenWords.length, 7, 'Skipped "He" and advanced through all words');
+})();
+
+console.log('\n--- Test 48: Skip 2 expected words at sentence boundary ---');
+(function() {
+    const s = new TestReadingSession();
+    s.setupPage('The dog ran fast. He then jumped over the fence.');
+    // User reads "the dog ran fast" then mic misses "He then" during restart
+    s.simulateFinalWords('the dog ran fast jumped over the fence');
+    s.advanceAll();
+    // Should skip "He" and "then" because "jumped over" confirms position
+    assert(s.spokenWords.length >= 8, 'Skipped "He then" and matched remaining');
+})();
+
+console.log('\n--- Test 49: No false skip for common words ---');
+(function() {
+    const s = new TestReadingSession();
+    s.setupPage('The cat sat. The dog ran.');
+    // User says "the cat sat the dog ran" — should match sequentially, no skip
+    s.simulateFinalWords('the cat sat the dog ran');
+    s.advanceAll();
+    assertEqual(s.spokenWords.length, 6, 'All 6 matched sequentially, no false skip');
+})();
+
+console.log('\n--- Test 50: Tail recovery skips lost expected words ---');
+(function() {
+    const s = new TestReadingSession();
+    s.setupPage('The dog ran fast. He jumped over the fence.');
+    s.simulateFinalWords('the dog ran fast');
+    s.advanceAll();
+    assertEqual(s.spokenWords.length, 4, 'Matched 4 words');
+
+    // Session restart — "He" lost. Tail recovery should skip "He" and find
+    // "jumped over" (2 consecutive matches starting from expected[5])
+    s.lastSpokenText = 'the dog ran ';
+    s.simulateInterimWords(s.lastSpokenText, 'jumped over the fence');
+    s.advanceAll();
+    assert(s.spokenWords.length >= 8, 'Tail recovery skipped "He" and matched "jumped over the fence"');
 })();
 
 // --- Summary ---

@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Depends, Security
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Depends, Security, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
@@ -2392,6 +2392,59 @@ async def finish_reading_session(book_id: str, data: dict, db: Session = Depends
         raise HTTPException(status_code=500, detail=f"Failed to save reading session: {str(e)}")
 
 # ─── ElevenLabs Text-to-Speech Endpoint ─────────────────────────────
+
+## ─── Speech-to-text (Whisper) for mobile browsers ───────────────────────
+import tempfile
+
+@app.post("/api/reading/transcribe")
+async def transcribe_audio(audio: UploadFile = File(...)):
+    """Transcribe audio using OpenAI Whisper. Used as a fallback when the
+    browser's SpeechRecognition API is unavailable (e.g. mobile Safari)."""
+
+    if not OPENAI_API_KEY or OPENAI_API_KEY == "your-openai-api-key-here":
+        raise HTTPException(status_code=503, detail="OpenAI API key not configured")
+
+    audio_bytes = await audio.read()
+    if len(audio_bytes) == 0:
+        return {"text": ""}
+
+    # Determine file extension from content type
+    ext = ".webm"
+    if audio.content_type:
+        if "mp4" in audio.content_type or "m4a" in audio.content_type:
+            ext = ".m4a"
+        elif "wav" in audio.content_type:
+            ext = ".wav"
+        elif "ogg" in audio.content_type:
+            ext = ".ogg"
+
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=OPENAI_API_KEY)
+
+        with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as f:
+            f.write(audio_bytes)
+            temp_path = f.name
+
+        with open(temp_path, "rb") as audio_file:
+            transcription = client.audio.transcriptions.create(
+                model="whisper-1",
+                file=audio_file,
+                language="en",
+                response_format="text"
+            )
+
+        return {"text": transcription.strip() if isinstance(transcription, str) else transcription}
+    except Exception as e:
+        logger.error(f"Whisper transcription error: {e}")
+        raise HTTPException(status_code=500, detail="Transcription failed")
+    finally:
+        try:
+            os.unlink(temp_path)
+        except Exception:
+            pass
+
+## ─── Text-to-speech (ElevenLabs) ────────────────────────────────────────
 
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
 ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "FGY2WhTYpPnrIDTdsKH5")  # "Laura" - quirky, sunny, enthusiastic
