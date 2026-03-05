@@ -73,12 +73,16 @@ try:
     chapter_cols = [c["name"] for c in inspector.get_columns("chapters")]
     if "is_completed" not in chapter_cols:
         with engine.connect() as conn:
-            conn.execute(sa_text("ALTER TABLE chapters ADD COLUMN is_completed BOOLEAN DEFAULT 0"))
+            conn.execute(sa_text("ALTER TABLE chapters ADD COLUMN is_completed BOOLEAN DEFAULT FALSE"))
             conn.commit()
         print("✅ Added is_completed column to chapters table")
+    else:
+        print("✅ is_completed column already exists")
 except Exception as mig_err:
     # Column might already exist or table might not exist yet - that's fine
     print(f"⚠️ Migration check for is_completed: {mig_err}")
+    import traceback
+    traceback.print_exc()
 
 # Define lifespan function (will be used later)
 @asynccontextmanager
