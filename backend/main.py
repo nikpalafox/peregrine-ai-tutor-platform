@@ -1834,7 +1834,7 @@ Remember: You're not just answering questions - you're nurturing a love of learn
         """Generate AI response using the appropriate specialized tutor"""
         try:
             # Check if API key is properly set
-            if not OPENAI_API_KEY or OPENAI_API_KEY == "your-openai-api-key-here":
+            if not OPENAI_API_KEY or OPENAI_API_KEY.startswith("your"):
                 print("ERROR: OpenAI API key not set properly!")
                 return "I'm sorry, but my AI connection isn't configured yet. Please ask your teacher to set up the OpenAI API key."
             
@@ -2530,7 +2530,7 @@ async def transcribe_audio(audio: UploadFile = File(...)):
     """Transcribe audio using OpenAI Whisper. Used as a fallback when the
     browser's SpeechRecognition API is unavailable (e.g. mobile Safari)."""
 
-    if not OPENAI_API_KEY or OPENAI_API_KEY == "your-openai-api-key-here":
+    if not OPENAI_API_KEY or OPENAI_API_KEY.startswith("your"):
         raise HTTPException(status_code=503, detail="OpenAI API key not configured")
 
     audio_bytes = await audio.read()

@@ -40,6 +40,15 @@ class ReadingSession {
         this._ttsAudio = null; // Current ElevenLabs audio element
         this._pendingInterim = ''; // Last interim transcript (promoted to lastSpokenText on session end)
 
+        // Whisper fallback properties (for mobile browsers without SpeechRecognition)
+        this._useWhisperFallback = false;
+        this._whisperStream = null;
+        this._mediaRecorder = null;
+        this._audioChunks = [];
+        this._whisperTranscribing = false;
+        this._whisperInterval = null;
+        this._nativeSpeechFailed = false; // Track if native API failed so we can fall back
+
         // Pre-load voices (Chrome loads them asynchronously)
         this._initTTSVoices();
     }
@@ -332,11 +341,19 @@ class ReadingSession {
                 // These are normal - don't do anything
                 return;
             }
-            // Only stop on serious errors
-            if (event.error === 'network' || event.error === 'not-allowed') {
-                try {
-                    this.stopListening();
-                } catch (e) {}
+            // On serious errors, fall back to Whisper instead of just stopping.
+            // This is common on mobile browsers where native SpeechRecognition
+            // exists but fails (e.g. network errors, permission denied after
+            // initial grant, service-not-available on some Android devices).
+            if (event.error === 'network' || event.error === 'not-allowed' || event.error === 'service-not-available') {
+                console.warn('Native SpeechRecognition failed — switching to Whisper fallback');
+                this._nativeSpeechFailed = true;
+                this._useWhisperFallback = true;
+                try { this.recognition.stop(); } catch (e) {}
+                if (this.isListening) {
+                    this._startWhisperRecognition();
+                    this.updateAgentFeedback("I'm listening! Start reading when you're ready.");
+                }
             }
         };
         
@@ -356,6 +373,9 @@ class ReadingSession {
                 this.lastSpokenText += this._pendingInterim + ' ';
                 this._pendingInterim = '';
             }
+
+            // If we've switched to Whisper fallback, don't restart native recognition
+            if (this._useWhisperFallback) return;
 
             // If TTS is speaking, we intentionally stopped — don't restart
             if (this.isSpeaking) return;
@@ -563,16 +583,40 @@ class ReadingSession {
     // ── Whisper fallback for mobile (MediaRecorder + server-side Whisper) ──
 
     async _startWhisperRecognition() {
+        // Check for secure context (HTTPS required for getUserMedia on mobile)
+        if (!window.isSecureContext && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+            console.error('getUserMedia requires HTTPS on mobile');
+            this.updateAgentFeedback('Microphone requires a secure (HTTPS) connection. Please use HTTPS.');
+            return;
+        }
+
+        // Check if getUserMedia is available
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            console.error('getUserMedia not available');
+            this.updateAgentFeedback('Your browser does not support microphone access. Please try Chrome or Safari.');
+            return;
+        }
+
         try {
+            console.log('Requesting microphone access for Whisper fallback...');
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             this._whisperStream = stream;
+            console.log('Microphone access granted');
 
-            // Pick a supported MIME type
-            const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-                ? 'audio/webm;codecs=opus'
-                : MediaRecorder.isTypeSupported('audio/mp4')
-                    ? 'audio/mp4'
-                    : '';
+            // Pick a supported MIME type — Safari prefers mp4, Chrome prefers webm
+            let mimeType = '';
+            if (typeof MediaRecorder.isTypeSupported === 'function') {
+                if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+                    mimeType = 'audio/webm;codecs=opus';
+                } else if (MediaRecorder.isTypeSupported('audio/webm')) {
+                    mimeType = 'audio/webm';
+                } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
+                    mimeType = 'audio/mp4';
+                } else if (MediaRecorder.isTypeSupported('audio/aac')) {
+                    mimeType = 'audio/aac';
+                }
+            }
+            console.log('Using MediaRecorder MIME type:', mimeType || '(default)');
 
             this._mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
             this._audioChunks = [];
@@ -584,14 +628,26 @@ class ReadingSession {
                 }
             };
 
+            this._mediaRecorder.onerror = (event) => {
+                console.error('MediaRecorder error:', event.error);
+            };
+
             // Record in 3-second slices
             this._mediaRecorder.start(3000);
+            console.log('MediaRecorder started — sending chunks every 3s');
 
-            // Send audio for transcription every 3 seconds
-            this._whisperInterval = setInterval(() => this._sendWhisperChunk(), 3000);
+            // Send audio for transcription every 3 seconds (offset by 500ms so
+            // the chunk from ondataavailable has time to arrive)
+            this._whisperInterval = setInterval(() => this._sendWhisperChunk(), 3500);
         } catch (err) {
             console.error('Microphone access failed:', err);
-            this.updateAgentFeedback('Could not access microphone. Please allow microphone access and try again.');
+            if (err.name === 'NotAllowedError') {
+                this.updateAgentFeedback('Microphone access was denied. Please allow microphone access in your browser settings and reload.');
+            } else if (err.name === 'NotFoundError') {
+                this.updateAgentFeedback('No microphone found. Please connect a microphone and try again.');
+            } else {
+                this.updateAgentFeedback('Could not access microphone. Please allow microphone access and try again.');
+            }
         }
     }
 
@@ -615,19 +671,27 @@ class ReadingSession {
         this._whisperTranscribing = true;
 
         // Grab all accumulated chunks and send as one blob
-        const blob = new Blob(this._audioChunks, {
-            type: this._mediaRecorder?.mimeType || 'audio/webm'
-        });
+        const mimeType = this._mediaRecorder?.mimeType || 'audio/webm';
+        const blob = new Blob(this._audioChunks, { type: mimeType });
 
-        // Keep chunks for cumulative transcription (Whisper works better
-        // with longer audio). We'll send the full recording each time.
+        // Determine file extension for the upload filename
+        const ext = mimeType.includes('mp4') || mimeType.includes('m4a') ? 'recording.m4a'
+                  : mimeType.includes('ogg') ? 'recording.ogg'
+                  : 'recording.webm';
+
         const formData = new FormData();
-        formData.append('audio', blob, 'recording.webm');
+        formData.append('audio', blob, ext);
+
+        // Build headers with auth token (API_BASE_URL is defined in api.js)
+        const headers = {};
+        const token = localStorage.getItem('authToken');
+        if (token) headers['Authorization'] = `Bearer ${token}`;
 
         try {
-            const resp = await fetch('/api/reading/transcribe', {
+            const resp = await fetch(API_BASE_URL + '/reading/transcribe', {
                 method: 'POST',
-                body: formData
+                body: formData,
+                headers: headers
             });
             if (resp.ok) {
                 const data = await resp.json();
@@ -637,6 +701,8 @@ class ReadingSession {
                     this.pauseStartTime = null;
                     this._runWhisperMatching();
                 }
+            } else {
+                console.error('Whisper API error:', resp.status, resp.statusText);
             }
         } catch (err) {
             console.error('Whisper transcription error:', err);
