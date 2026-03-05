@@ -723,6 +723,90 @@
             color: #fff;
         }
 
+        /* Completed section */
+        .completed-section {
+            margin-top: 32px;
+            padding-top: 24px;
+            border-top: 1px solid var(--border);
+        }
+
+        .completed-section .section-header h3 {
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--text-secondary);
+            margin-bottom: 16px;
+        }
+
+        .completed-section .book-card {
+            opacity: 0.8;
+        }
+
+        .completed-section .book-card:hover {
+            opacity: 1;
+        }
+
+        .book-card-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 4px;
+        }
+
+        .book-card-actions .btn-read {
+            flex: 1;
+        }
+
+        .btn-complete {
+            padding: 10px 14px;
+            border: 1.5px solid #22c55e;
+            background: transparent;
+            color: #22c55e;
+            border-radius: var(--radius-sm);
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            font-family: inherit;
+            white-space: nowrap;
+        }
+
+        .btn-complete:hover {
+            background: #22c55e;
+            color: #fff;
+        }
+
+        .btn-delete {
+            padding: 10px 14px;
+            border: 1.5px solid var(--border);
+            background: transparent;
+            color: var(--text-secondary);
+            border-radius: var(--radius-sm);
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            font-family: inherit;
+            white-space: nowrap;
+        }
+
+        .btn-delete:hover {
+            border-color: #ef4444;
+            color: #ef4444;
+            background: rgba(239, 68, 68, 0.06);
+        }
+
+        .completed-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            background: rgba(34, 197, 94, 0.1);
+            color: #22c55e;
+            font-size: 12px;
+            font-weight: 600;
+            padding: 3px 10px;
+            border-radius: 12px;
+            margin-bottom: 12px;
+        }
+
         /* Chapter card (for dynamically generated) */
         .chapter-card {
             background: var(--surface);
@@ -1087,7 +1171,16 @@
             </div>
 
             <div id="readingList" class="books-grid">
-                <!-- Books will be added dynamically -->
+                <!-- Active books will be added dynamically -->
+            </div>
+
+            <div id="completedSection" class="completed-section" style="display: none;">
+                <div class="section-header">
+                    <h3>Completed Books</h3>
+                </div>
+                <div id="completedList" class="books-grid">
+                    <!-- Completed books will be added dynamically -->
+                </div>
             </div>
 
             <div id="chapters-container">

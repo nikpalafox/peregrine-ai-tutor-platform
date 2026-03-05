@@ -26,7 +26,8 @@ class Chapter(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     last_read_at = Column(DateTime, nullable=True)
     reading_progress = Column(Float, default=0)
-    
+    is_completed = Column(Boolean, default=False)
+
     user = relationship("User", back_populates="chapters")
     reading_sessions = relationship("ReadingSession", back_populates="chapter")
 

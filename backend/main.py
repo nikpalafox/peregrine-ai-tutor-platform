@@ -66,6 +66,20 @@ except Exception as e:
     logger.warning(f"Could not create database tables: {e}")
     # Continue anyway - tables may already exist or will be created lazily
 
+# Lightweight migration: add is_completed column to chapters if missing
+try:
+    from sqlalchemy import text as sa_text, inspect as sa_inspect
+    inspector = sa_inspect(engine)
+    chapter_cols = [c["name"] for c in inspector.get_columns("chapters")]
+    if "is_completed" not in chapter_cols:
+        with engine.connect() as conn:
+            conn.execute(sa_text("ALTER TABLE chapters ADD COLUMN is_completed BOOLEAN DEFAULT 0"))
+            conn.commit()
+        print("✅ Added is_completed column to chapters table")
+except Exception as mig_err:
+    # Column might already exist or table might not exist yet - that's fine
+    print(f"⚠️ Migration check for is_completed: {mig_err}")
+
 # Define lifespan function (will be used later)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -2114,7 +2128,8 @@ async def get_student_books(student_id: str, db: Session = Depends(get_db)):
                 "content": chapter.content,
                 "created_at": chapter.created_at.isoformat() if chapter.created_at else None,
                 "last_read_at": chapter.last_read_at.isoformat() if chapter.last_read_at else None,
-                "reading_progress": chapter.reading_progress
+                "reading_progress": chapter.reading_progress,
+                "is_completed": getattr(chapter, 'is_completed', False) or False
             })
         
         # If no books in database, check in-memory storage as fallback
@@ -2135,6 +2150,71 @@ async def get_student_books(student_id: str, db: Session = Depends(get_db)):
             return progress_db[student_id]["generated_books"]
         # Return empty list instead of raising error to prevent frontend issues
         return []
+
+@app.post("/api/students/{student_id}/books/{book_id}/complete")
+async def mark_book_completed(student_id: str, book_id: str, db: Session = Depends(get_db)):
+    """Mark a book as completed and move it to the completed section"""
+    try:
+        chapter = db.query(Chapter).filter(
+            Chapter.id == book_id,
+            Chapter.user_id == student_id
+        ).first()
+        if not chapter:
+            raise HTTPException(status_code=404, detail="Book not found")
+
+        chapter.is_completed = True
+        chapter.reading_progress = 100.0
+        db.commit()
+        print(f"✅ Book {book_id} marked as completed for student {student_id}")
+
+        # Award XP for completing a book
+        try:
+            await gamification_engine.process_student_activity(
+                student_id,
+                "book_completed",
+                {"book_id": book_id, "subject": "reading"}
+            )
+        except Exception as gam_err:
+            print(f"Gamification update on book complete failed (non-fatal): {gam_err}")
+
+        return {"message": "Book marked as completed", "book_id": book_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error marking book as completed: {e}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/students/{student_id}/books/{book_id}")
+async def delete_book(student_id: str, book_id: str, db: Session = Depends(get_db)):
+    """Delete a book/chapter for a student"""
+    try:
+        chapter = db.query(Chapter).filter(
+            Chapter.id == book_id,
+            Chapter.user_id == student_id
+        ).first()
+        if not chapter:
+            raise HTTPException(status_code=404, detail="Book not found")
+
+        # Delete associated reading sessions first
+        db.query(ReadingSession).filter(ReadingSession.chapter_id == book_id).delete()
+        db.delete(chapter)
+        db.commit()
+        print(f"🗑️ Book {book_id} deleted for student {student_id}")
+
+        # Also remove from in-memory storage if present
+        if student_id in progress_db and "generated_books" in progress_db[student_id]:
+            progress_db[student_id]["generated_books"] = [
+                b for b in progress_db[student_id]["generated_books"] if b.get("id") != book_id
+            ]
+
+        return {"message": "Book deleted", "book_id": book_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error deleting book: {e}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
 
 # Reading Agent endpoints
 class ReadingFeedbackRequest(BaseModel):
@@ -2670,6 +2750,14 @@ async def record_activity(activity: GamificationActivityRequest):
 async def get_student_dashboard(student_id: str):
     """Get comprehensive gamification dashboard - FULLY FUNCTIONAL"""
     try:
+        # Trigger daily streak update on every dashboard load so simply
+        # opening the app counts as daily activity.
+        try:
+            await gamification_engine.update_streaks(student_id)
+            print(f"🔥 Streak updated for {student_id} on dashboard load")
+        except Exception as streak_err:
+            print(f"⚠️ Streak update on dashboard load failed (non-fatal): {streak_err}")
+
         # Get real dashboard data from the gamification engine
         dashboard = await gamification_engine.get_student_dashboard_data(student_id)
         

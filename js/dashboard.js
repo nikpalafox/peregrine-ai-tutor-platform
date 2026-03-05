@@ -399,9 +399,12 @@ async function loadStudentBooks(userId) {
 
 function displayReadingList(books) {
     const container = document.getElementById('readingList');
+    const completedSection = document.getElementById('completedSection');
+    const completedList = document.getElementById('completedList');
     if (!container) return;
 
     container.innerHTML = '';
+    if (completedList) completedList.innerHTML = '';
 
     if (!books || books.length === 0) {
         container.innerHTML = `
@@ -410,39 +413,139 @@ function displayReadingList(books) {
                 <div class="empty-state-title">No chapters yet</div>
                 <div class="empty-state-text">Click "New Chapter" to generate your first AI-powered reading chapter!</div>
             </div>`;
+        if (completedSection) completedSection.style.display = 'none';
         return;
     }
 
-    books.forEach(book => {
-        const card = document.createElement('div');
-        card.className = 'book-card';
+    // Split into active and completed
+    const activeBooks = books.filter(b => !b.is_completed);
+    const completedBooks = books.filter(b => b.is_completed);
 
-        const title = book.title || book.topic || 'Untitled Chapter';
-        const description = book.description ||
-                          (book.content ? book.content.substring(0, 150) + '...' : '') ||
-                          'A custom reading chapter for you!';
-        const progress = book.reading_progress || 0;
+    // Render active books
+    if (activeBooks.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state" style="grid-column: 1 / -1;">
+                <div class="empty-state-icon">&#x1F389;</div>
+                <div class="empty-state-title">All caught up!</div>
+                <div class="empty-state-text">Generate a new chapter to keep reading.</div>
+            </div>`;
+    } else {
+        activeBooks.forEach(book => {
+            container.appendChild(createBookCard(book, false));
+        });
+    }
 
+    // Render completed books
+    if (completedBooks.length > 0 && completedList && completedSection) {
+        completedSection.style.display = 'block';
+        completedBooks.forEach(book => {
+            completedList.appendChild(createBookCard(book, true));
+        });
+    } else if (completedSection) {
+        completedSection.style.display = 'none';
+    }
+
+    // Attach event listeners
+    attachBookCardListeners();
+}
+
+function createBookCard(book, isCompleted) {
+    const card = document.createElement('div');
+    card.className = 'book-card';
+    card.setAttribute('data-book-id', book.id);
+
+    const title = book.title || book.topic || 'Untitled Chapter';
+    const description = book.description ||
+                      (book.content ? book.content.substring(0, 150) + '...' : '') ||
+                      'A custom reading chapter for you!';
+    const progress = book.reading_progress || 0;
+
+    if (isCompleted) {
+        card.innerHTML = `
+            <div class="completed-badge">&#x2713; Completed</div>
+            <div class="book-card-title">${title}</div>
+            <div class="book-card-desc">${description}</div>
+            <div class="book-card-progress">
+                <div class="book-card-progress-bar" style="width: 100%"></div>
+            </div>
+            <div class="book-card-actions">
+                <button data-book-id="${book.id}" class="start-reading btn-read">
+                    Re-read
+                </button>
+                <button data-book-id="${book.id}" class="delete-book btn-delete">
+                    Delete
+                </button>
+            </div>
+        `;
+    } else {
         card.innerHTML = `
             <div class="book-card-title">${title}</div>
             <div class="book-card-desc">${description}</div>
             <div class="book-card-progress">
                 <div class="book-card-progress-bar" style="width: ${progress}%"></div>
             </div>
-            <button data-book-id="${book.id}" class="start-reading btn-read">
-                ${progress > 0 ? 'Continue Reading' : 'Start Reading'}
-            </button>
+            <div class="book-card-actions">
+                <button data-book-id="${book.id}" class="start-reading btn-read">
+                    ${progress > 0 ? 'Continue Reading' : 'Start Reading'}
+                </button>
+                ${progress > 0 ? `<button data-book-id="${book.id}" class="complete-book btn-complete">Done</button>` : ''}
+            </div>
         `;
-        container.appendChild(card);
-    });
+    }
 
-    container.querySelectorAll('.start-reading').forEach(btn => {
+    return card;
+}
+
+function attachBookCardListeners() {
+    const userId = localStorage.getItem('userId');
+
+    document.querySelectorAll('.start-reading').forEach(btn => {
         btn.addEventListener('click', (e) => {
             const bookId = e.currentTarget.getAttribute('data-book-id');
             if (bookId) {
                 window.location.href = `reading.html?id=${bookId}`;
             } else {
                 showError('Book ID not found. Please try again.');
+            }
+        });
+    });
+
+    document.querySelectorAll('.complete-book').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            const bookId = e.currentTarget.getAttribute('data-book-id');
+            if (!bookId || !userId) return;
+            try {
+                btn.disabled = true;
+                btn.textContent = '...';
+                await apiRequest('POST', `/students/${userId}/books/${bookId}/complete`);
+                showGamToast('\u2705', 'Book Completed!', 'Great job finishing this chapter!');
+                await loadStudentBooks(userId);
+                loadGamificationStats(userId);
+            } catch (err) {
+                console.error('Failed to mark book as completed', err);
+                showError('Failed to mark book as completed');
+                btn.disabled = false;
+                btn.textContent = 'Done';
+            }
+        });
+    });
+
+    document.querySelectorAll('.delete-book').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            const bookId = e.currentTarget.getAttribute('data-book-id');
+            if (!bookId || !userId) return;
+            if (!confirm('Are you sure you want to delete this book?')) return;
+            try {
+                btn.disabled = true;
+                btn.textContent = '...';
+                await apiRequest('DELETE', `/students/${userId}/books/${bookId}`);
+                showGamToast('\u{1F5D1}\uFE0F', 'Book Deleted', 'The book has been removed.');
+                await loadStudentBooks(userId);
+            } catch (err) {
+                console.error('Failed to delete book', err);
+                showError('Failed to delete book');
+                btn.disabled = false;
+                btn.textContent = 'Delete';
             }
         });
     });
