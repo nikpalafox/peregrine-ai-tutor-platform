@@ -262,6 +262,7 @@ class GamificationActivityRequest(BaseModel):
     activity_data: Dict = {}
     subject: Optional[str] = None  # math, science, reading
     tutor_type: Optional[str] = None
+    local_hour: Optional[int] = None  # Client's local hour (0-23) for time-based achievements
 
 class BookRequest(BaseModel):
     student_id: str
@@ -465,7 +466,7 @@ class GamificationEngine:
             "night_owl": Badge(
                 id="night_owl",
                 name="Night Owl",
-                description="Studied after 9 PM",
+                description="Studied between 10 PM and 3 AM",
                 icon="🦉",
                 badge_type=BadgeType.SPECIAL,
                 difficulty=DifficultyLevel.BRONZE,
@@ -477,7 +478,7 @@ class GamificationEngine:
             "early_bird": Badge(
                 id="early_bird",
                 name="Early Bird",
-                description="Studied before 7 AM",
+                description="Studied between 5 AM and 6 AM",
                 icon="🐦",
                 badge_type=BadgeType.SPECIAL,
                 difficulty=DifficultyLevel.BRONZE,
@@ -935,13 +936,15 @@ class GamificationEngine:
             if activity_data.get("tutor_type"):
                 stats_update["different_tutors_used"] = activity_data["tutor_type"]
             
-            # Update time-based stats
-            current_hour = datetime.now().hour
-            if current_hour >= 21 or current_hour <= 5:
+            # Update time-based stats (use client's local hour if provided, else server time)
+            current_hour = activity_data.get("local_hour")
+            if current_hour is None:
+                current_hour = datetime.now().hour
+            if current_hour >= 22 or current_hour <= 3:  # 10 PM – 3 AM
                 stats_update["late_night_study"] = 1
-            elif current_hour <= 7:
+            elif 5 <= current_hour <= 6:  # 5 AM – 6 AM
                 stats_update["early_morning_study"] = 1
-            
+
             await GamificationStorage.update_student_stats(student_id, stats_update)
             
             # 3. Update streaks
@@ -984,15 +987,18 @@ class GamificationEngine:
     
     async def check_special_achievements(self, student_id: str, activity_type: str, activity_data: Dict):
         """Check for special time-based and activity-based achievements"""
-        current_hour = datetime.now().hour
-        
-        # Night Owl achievement
-        if current_hour >= 21 or current_hour <= 5:
+        # Use client's local hour if provided, else fall back to server time
+        current_hour = activity_data.get("local_hour") if activity_data else None
+        if current_hour is None:
+            current_hour = datetime.now().hour
+
+        # Night Owl achievement (10 PM – 3 AM local time)
+        if current_hour >= 22 or current_hour <= 3:
             if not await self.student_has_badge(student_id, "night_owl"):
                 await self.award_badge(student_id, "night_owl")
-        
-        # Early Bird achievement
-        if current_hour <= 7:
+
+        # Early Bird achievement (5 AM – 6 AM local time)
+        if 5 <= current_hour <= 6:
             if not await self.student_has_badge(student_id, "early_bird"):
                 await self.award_badge(student_id, "early_bird")
         
@@ -1568,6 +1574,7 @@ class GamificationActivityRequest(BaseModel):
     activity_data: Dict = {}
     subject: Optional[str] = None  # math, science, reading
     tutor_type: Optional[str] = None
+    local_hour: Optional[int] = None  # Client's local hour (0-23) for time-based achievements
 
 
 # Use the OPENAI_API_KEY loaded at the top of the file
@@ -2214,9 +2221,17 @@ async def get_student_books(student_id: str, db: Session = Depends(get_db)):
         return []
 
 @app.post("/api/students/{student_id}/books/{book_id}/complete")
-async def mark_book_completed(student_id: str, book_id: str, db: Session = Depends(get_db)):
+async def mark_book_completed(student_id: str, book_id: str, request: Request = None, db: Session = Depends(get_db)):
     """Mark a book as completed and move it to the completed section"""
     try:
+        # Parse optional body for local_hour
+        local_hour = None
+        try:
+            body = await request.json() if request else {}
+            local_hour = body.get("local_hour")
+        except Exception:
+            pass
+
         chapter = db.query(Chapter).filter(
             Chapter.id == book_id,
             Chapter.user_id == student_id
@@ -2234,7 +2249,7 @@ async def mark_book_completed(student_id: str, book_id: str, db: Session = Depen
             await gamification_engine.process_student_activity(
                 student_id,
                 "book_completed",
-                {"book_id": book_id, "subject": "reading"}
+                {"book_id": book_id, "subject": "reading", "local_hour": local_hour}
             )
         except Exception as gam_err:
             print(f"Gamification update on book complete failed (non-fatal): {gam_err}")
@@ -2561,7 +2576,8 @@ async def finish_reading_session(book_id: str, data: dict, db: Session = Depends
                     "subject": "reading",
                     "book_id": book_id,
                     "accuracy": data.get('accuracy_score', 0),
-                    "wpm": data.get('wpm', 0)
+                    "wpm": data.get('wpm', 0),
+                    "local_hour": data.get('local_hour')
                 }
             )
             print(f"Gamification updated for {student_id}: +{gamification_results.get('xp_gained', 0)} XP")
@@ -3326,11 +3342,11 @@ async def process_student_activity(activity: GamificationActivityRequest) -> Dic
     await gamification_engine.add_xp(activity.student_id, xp_gained, f"Activity: {activity.activity_type}")
     stats["xp_gained"] = xp_gained
     
-    # Track time-based achievements
-    current_hour = datetime.now().hour
-    if current_hour >= 21 or current_hour <= 5:  # 9 PM to 5 AM
+    # Track time-based achievements (use client's local hour if provided)
+    current_hour = activity.local_hour if activity.local_hour is not None else datetime.now().hour
+    if current_hour >= 22 or current_hour <= 3:  # 10 PM – 3 AM
         stats["late_night_study"] = 1
-    elif current_hour <= 7:  # Before 7 AM
+    elif 5 <= current_hour <= 6:  # 5 AM – 6 AM
         stats["early_morning_study"] = 1
     
     return stats

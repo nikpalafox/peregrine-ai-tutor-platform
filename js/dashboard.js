@@ -517,7 +517,7 @@ function attachBookCardListeners() {
             try {
                 btn.disabled = true;
                 btn.textContent = '...';
-                await apiRequest('POST', `/students/${userId}/books/${bookId}/complete`);
+                await apiRequest('POST', `/students/${userId}/books/${bookId}/complete`, { local_hour: new Date().getHours() });
                 showGamToast('\u2705', 'Book Completed!', 'Great job finishing this chapter!');
                 await loadStudentBooks(userId);
                 loadGamificationStats(userId);

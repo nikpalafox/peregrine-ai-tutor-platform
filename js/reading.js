@@ -1222,6 +1222,7 @@ class ReadingSession {
                     wpm,
                     accuracy_score: accuracy,
                     comprehension_score: comprehension,
+                    local_hour: new Date().getHours(),
                 };
 
                 try {
