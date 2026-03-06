@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, DateTime, Float, ForeignKey, Table, Boolean
+from sqlalchemy import Column, String, Integer, DateTime, Float, ForeignKey, Table, Boolean, Text
 from sqlalchemy.orm import relationship
 from database import Base
 from datetime import datetime
@@ -57,3 +57,42 @@ class StudentStreak(Base):
     max_count = Column(Integer, default=0)
     last_activity_date = Column(DateTime, nullable=True)
     is_active = Column(Boolean, default=True)
+
+class StudentLevelDB(Base):
+    __tablename__ = "student_levels"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    student_id = Column(String, ForeignKey("users.id"), unique=True, index=True)
+    current_level = Column(Integer, default=1)
+    current_xp = Column(Integer, default=0)
+    xp_to_next_level = Column(Integer, default=100)
+    total_xp_earned = Column(Integer, default=0)
+    title = Column(String, default="Curious Beginner")
+
+class StudentBadgeDB(Base):
+    __tablename__ = "student_badges"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    student_id = Column(String, ForeignKey("users.id"), index=True)
+    badge_id = Column(String, index=True)
+    earned_date = Column(DateTime, default=datetime.utcnow)
+
+class StudentStatsDB(Base):
+    __tablename__ = "student_stats"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    student_id = Column(String, ForeignKey("users.id"), unique=True, index=True)
+    messages_sent = Column(Integer, default=0)
+    books_read = Column(Integer, default=0)
+    voice_interactions = Column(Integer, default=0)
+    math_interactions = Column(Integer, default=0)
+    science_interactions = Column(Integer, default=0)
+    reading_interactions = Column(Integer, default=0)
+    general_interactions = Column(Integer, default=0)
+    stories_generated = Column(Integer, default=0)
+    total_activities = Column(Integer, default=0)
+    late_night_study = Column(Integer, default=0)
+    early_morning_study = Column(Integer, default=0)
+    total_study_time_minutes = Column(Integer, default=0)
+    first_activity_date = Column(DateTime, nullable=True)
+    last_activity_date = Column(DateTime, nullable=True)

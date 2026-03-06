@@ -20,7 +20,7 @@ from dotenv import load_dotenv
 # Import our models and database
 from models.auth import UserAuth, UserCreate, UserInDB, Token, TokenData
 from models.reading import Chapter as ChapterPydantic, ReadingSession as ReadingSessionPydantic
-from models.schema import Base, User, Chapter, ReadingSession, StudentStreak
+from models.schema import Base, User, Chapter, ReadingSession, StudentStreak, StudentLevelDB, StudentBadgeDB, StudentStatsDB
 from database import engine, get_db
 from utils import format_xp_display, get_difficulty_color, create_achievement_notification
 from gamification import XPCalculator, QuestGenerator, get_student_rank
@@ -1156,118 +1156,181 @@ class GamificationEngine:
         return total_progress / len(quest.requirements)
 
 class GamificationStorage:
-    """Handles all gamification data storage operations"""
-    
+    """Handles all gamification data storage operations — persisted to database"""
+
     @staticmethod
     async def get_student_stats(student_id: str) -> Dict:
-        """Get comprehensive student statistics"""
-        if student_id not in student_stats_db:
-            student_stats_db[student_id] = {
-                "messages_sent": 0,
-                "math_interactions": 0,
-                "science_interactions": 0,
-                "reading_interactions": 0,
-                "general_interactions": 0,
-                "books_read": 0,
-                "voice_interactions": 0,
-                "stories_generated": 0,
+        """Get comprehensive student statistics from database"""
+        from database import SessionLocal
+        db = SessionLocal()
+        try:
+            row = db.query(StudentStatsDB).filter(StudentStatsDB.student_id == student_id).first()
+            if not row:
+                return {
+                    "messages_sent": 0, "math_interactions": 0, "science_interactions": 0,
+                    "reading_interactions": 0, "general_interactions": 0, "books_read": 0,
+                    "voice_interactions": 0, "stories_generated": 0, "unique_questions": 0,
+                    "different_tutors_used": 0, "late_night_study": 0, "early_morning_study": 0,
+                    "total_study_time_minutes": 0, "consecutive_days": 0, "total_activities": 0,
+                    "first_chat_date": None, "last_activity_date": None
+                }
+            return {
+                "messages_sent": row.messages_sent or 0,
+                "math_interactions": row.math_interactions or 0,
+                "science_interactions": row.science_interactions or 0,
+                "reading_interactions": row.reading_interactions or 0,
+                "general_interactions": row.general_interactions or 0,
+                "books_read": row.books_read or 0,
+                "voice_interactions": row.voice_interactions or 0,
+                "stories_generated": row.stories_generated or 0,
                 "unique_questions": 0,
-                "different_tutors_used": set(),
-                "late_night_study": 0,
-                "early_morning_study": 0,
-                "total_study_time_minutes": 0,
+                "different_tutors_used": 0,
+                "late_night_study": row.late_night_study or 0,
+                "early_morning_study": row.early_morning_study or 0,
+                "total_study_time_minutes": row.total_study_time_minutes or 0,
                 "consecutive_days": 0,
-                "first_chat_date": None,
-                "last_activity_date": None
+                "total_activities": row.total_activities or 0,
+                "first_chat_date": row.first_activity_date,
+                "last_activity_date": row.last_activity_date
             }
-        
-        stats = student_stats_db[student_id].copy()
-        # Convert set to count for different_tutors_used
-        if isinstance(stats.get("different_tutors_used"), set):
-            stats["different_tutors_used"] = len(stats["different_tutors_used"])
-        
-        return stats
-    
+        finally:
+            db.close()
+
     @staticmethod
     async def update_student_stats(student_id: str, activity_data: Dict):
-        """Update student statistics based on activity"""
-        stats = await GamificationStorage.get_student_stats(student_id)
-        
-        # Update based on activity type
-        for key, value in activity_data.items():
-            if key == "different_tutors_used" and isinstance(stats[key], set):
-                stats[key].add(value)
-            elif key in stats:
-                if isinstance(value, (int, float)):
-                    stats[key] += value
-                else:
-                    stats[key] = value
-        
-        # Update timestamps
-        stats["last_activity_date"] = datetime.now()
-        if stats["first_chat_date"] is None:
-            stats["first_chat_date"] = datetime.now()
-        
-        student_stats_db[student_id] = stats
-    
+        """Update student statistics in database"""
+        from database import SessionLocal
+        db = SessionLocal()
+        try:
+            row = db.query(StudentStatsDB).filter(StudentStatsDB.student_id == student_id).first()
+            if not row:
+                row = StudentStatsDB(student_id=student_id, first_activity_date=datetime.now())
+                db.add(row)
+
+            # Map activity_data keys to columns and increment
+            int_cols = {
+                "messages_sent", "books_read", "voice_interactions",
+                "math_interactions", "science_interactions", "reading_interactions",
+                "general_interactions", "stories_generated", "total_activities",
+                "late_night_study", "early_morning_study", "total_study_time_minutes"
+            }
+            for key, value in activity_data.items():
+                if key in int_cols and isinstance(value, (int, float)):
+                    current = getattr(row, key, 0) or 0
+                    setattr(row, key, current + int(value))
+
+            row.last_activity_date = datetime.now()
+            db.commit()
+        except Exception as e:
+            print(f"Error updating student stats: {e}")
+            db.rollback()
+        finally:
+            db.close()
+
     @staticmethod
     async def student_has_badge(student_id: str, badge_id: str) -> bool:
         """Check if student has earned a specific badge"""
-        if student_id not in student_badges_db:
-            return False
-        
-        achievements = student_badges_db[student_id]
-        return any(achievement.badge_id == badge_id for achievement in achievements)
-    
+        from database import SessionLocal
+        db = SessionLocal()
+        try:
+            row = db.query(StudentBadgeDB).filter(
+                StudentBadgeDB.student_id == student_id,
+                StudentBadgeDB.badge_id == badge_id
+            ).first()
+            return row is not None
+        finally:
+            db.close()
+
     @staticmethod
     async def award_badge(student_id: str, badge_id: str):
         """Award a badge to a student"""
-        if student_id not in student_badges_db:
-            student_badges_db[student_id] = []
-        
-        # Check if badge already awarded
         if await GamificationStorage.student_has_badge(student_id, badge_id):
             return
-        
-        achievement = Achievement(
-            id=f"{student_id}_{badge_id}_{datetime.now().timestamp()}",
-            student_id=student_id,
-            badge_id=badge_id,
-            earned_date=datetime.now()
-        )
-        
-        student_badges_db[student_id].append(achievement)
-        print(f"🏆 Badge awarded: {badge_id} to student {student_id}")
-    
+        from database import SessionLocal
+        db = SessionLocal()
+        try:
+            row = StudentBadgeDB(
+                student_id=student_id,
+                badge_id=badge_id,
+                earned_date=datetime.now()
+            )
+            db.add(row)
+            db.commit()
+            print(f"🏆 Badge awarded: {badge_id} to student {student_id}")
+        except Exception as e:
+            print(f"Error awarding badge: {e}")
+            db.rollback()
+        finally:
+            db.close()
+
     @staticmethod
     async def get_student_badges(student_id: str) -> List[str]:
         """Get list of badge IDs earned by student"""
-        if student_id not in student_badges_db:
-            return []
-        
-        return [achievement.badge_id for achievement in student_badges_db[student_id]]
-    
+        from database import SessionLocal
+        db = SessionLocal()
+        try:
+            rows = db.query(StudentBadgeDB).filter(StudentBadgeDB.student_id == student_id).all()
+            return [row.badge_id for row in rows]
+        finally:
+            db.close()
+
     @staticmethod
     async def get_student_level(student_id: str) -> StudentLevel:
-        """Get student's current level information"""
-        if student_id not in student_levels_db:
-            # Initialize new student at level 1
-            student_levels_db[student_id] = StudentLevel(
-                student_id=student_id,
-                current_level=1,
-                current_xp=0,
-                xp_to_next_level=100,  # First level requires 100 XP
-                total_xp_earned=0,
-                title="Curious Beginner"
+        """Get student's current level information from database"""
+        from database import SessionLocal
+        db = SessionLocal()
+        try:
+            row = db.query(StudentLevelDB).filter(StudentLevelDB.student_id == student_id).first()
+            if not row:
+                return StudentLevel(
+                    student_id=student_id,
+                    current_level=1, current_xp=0,
+                    xp_to_next_level=100, total_xp_earned=0,
+                    title="Curious Beginner"
+                )
+            return StudentLevel(
+                student_id=row.student_id,
+                current_level=row.current_level,
+                current_xp=row.current_xp,
+                xp_to_next_level=row.xp_to_next_level,
+                total_xp_earned=row.total_xp_earned,
+                title=row.title
             )
-        
-        return student_levels_db[student_id]
-    
+        finally:
+            db.close()
+
     @staticmethod
     async def save_student_level(student_level: StudentLevel):
-        """Save student level to storage"""
-        student_levels_db[student_level.student_id] = student_level
-        print(f"📊 Level updated for student {student_level.student_id}: Level {student_level.current_level} - {student_level.title}")
+        """Save student level to database"""
+        from database import SessionLocal
+        db = SessionLocal()
+        try:
+            row = db.query(StudentLevelDB).filter(
+                StudentLevelDB.student_id == student_level.student_id
+            ).first()
+            if row:
+                row.current_level = student_level.current_level
+                row.current_xp = student_level.current_xp
+                row.xp_to_next_level = student_level.xp_to_next_level
+                row.total_xp_earned = student_level.total_xp_earned
+                row.title = student_level.title
+            else:
+                row = StudentLevelDB(
+                    student_id=student_level.student_id,
+                    current_level=student_level.current_level,
+                    current_xp=student_level.current_xp,
+                    xp_to_next_level=student_level.xp_to_next_level,
+                    total_xp_earned=student_level.total_xp_earned,
+                    title=student_level.title
+                )
+                db.add(row)
+            db.commit()
+            print(f"📊 Level saved for {student_level.student_id}: Level {student_level.current_level} - {student_level.title}")
+        except Exception as e:
+            print(f"Error saving student level: {e}")
+            db.rollback()
+        finally:
+            db.close()
     
     @staticmethod
     async def get_streak(student_id: str, streak_type: str) -> Optional[Streak]:
@@ -1401,56 +1464,51 @@ class GamificationStorage:
     
     @staticmethod
     async def get_recent_achievements(student_id: str, limit: int = 5) -> List[Dict]:
-        """Get recent achievements for a student"""
-        if student_id not in student_badges_db:
-            return []
-        
-        achievements = student_badges_db[student_id]
-        # Sort by earned_date, most recent first
-        sorted_achievements = sorted(achievements, key=lambda x: x.earned_date, reverse=True)
-        
-        recent = []
-        for achievement in sorted_achievements[:limit]:
-            badge = gamification_engine.badges[achievement.badge_id]
-            recent.append({
-                "id": achievement.id,
-                "badge_name": badge.name,
-                "badge_icon": badge.icon,
-                "earned_date": achievement.earned_date.isoformat(),
-                "xp_reward": badge.xp_reward
-            })
-        
-        return recent
+        """Get recent achievements for a student from database"""
+        from database import SessionLocal
+        db = SessionLocal()
+        try:
+            rows = db.query(StudentBadgeDB).filter(
+                StudentBadgeDB.student_id == student_id
+            ).order_by(StudentBadgeDB.earned_date.desc()).limit(limit).all()
+
+            recent = []
+            for row in rows:
+                badge = gamification_engine.badges.get(row.badge_id)
+                if badge:
+                    recent.append({
+                        "id": f"{row.student_id}_{row.badge_id}",
+                        "badge_name": badge.name,
+                        "badge_icon": badge.icon,
+                        "earned_date": row.earned_date.isoformat() if row.earned_date else "",
+                        "xp_reward": badge.xp_reward
+                    })
+            return recent
+        finally:
+            db.close()
     
     @staticmethod
     async def get_leaderboard_data(timeframe: str = "all_time", limit: int = 10) -> List[Dict]:
-        """Get leaderboard data for all students"""
-        leaderboard = []
-        
-        for student_id, level_data in student_levels_db.items():
-            # Get student info (you might want to anonymize this)
-            student_name = f"Student {student_id[-4:]}"  # Show last 4 chars of ID
-            
-            # Get additional stats
-            badges_count = len(await GamificationStorage.get_student_badges(student_id))
-            
-            leaderboard.append({
-                "student_id": student_id,
-                "student_name": student_name,
-                "level": level_data.current_level,
-                "total_xp": level_data.total_xp_earned,
-                "title": level_data.title,
-                "badges_earned": badges_count
-            })
-        
-        # Sort by total XP (descending)
-        leaderboard.sort(key=lambda x: x["total_xp"], reverse=True)
-        
-        # Add ranks
-        for i, entry in enumerate(leaderboard[:limit]):
-            entry["rank"] = i + 1
-        
-        return leaderboard[:limit]
+        """Get leaderboard data for all students from database"""
+        from database import SessionLocal
+        db = SessionLocal()
+        try:
+            rows = db.query(StudentLevelDB).order_by(StudentLevelDB.total_xp_earned.desc()).limit(limit).all()
+            leaderboard = []
+            for i, row in enumerate(rows):
+                badges_count = len(await GamificationStorage.get_student_badges(row.student_id))
+                leaderboard.append({
+                    "student_id": row.student_id,
+                    "student_name": f"Student {row.student_id[-4:]}",
+                    "level": row.current_level,
+                    "total_xp": row.total_xp_earned,
+                    "title": row.title,
+                    "badges_earned": badges_count,
+                    "rank": i + 1
+                })
+            return leaderboard
+        finally:
+            db.close()
     
     @staticmethod
     def export_student_data(student_id: str) -> Dict:
