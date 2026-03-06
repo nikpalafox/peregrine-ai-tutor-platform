@@ -2457,7 +2457,12 @@ They have read up to word {request.current_word_index} of {len(expected_words)}.
         if is_stuck_on_word and stuck_word:
             prompt += f"""
 The student is STUCK on the word: "{stuck_word}"
-Help them sound it out. Break it into parts or syllables. For example: "The next word is '{stuck_word}'. Let's sound it out together: {stuck_word}."
+Help them by breaking the word into real syllables. Say each syllable slowly with commas between them.
+IMPORTANT: Your response will be read by a text-to-speech engine, so do NOT use dashes, slashes, or made-up phonetic spellings like "buh" or "kuh". Instead use real syllable chunks the TTS can pronounce.
+Good example for "butterfly": "The next word is butterfly. Let's try it together, but, ter, fly, butterfly!"
+Good example for "cat": "This word is cat. Listen, cah, at, cat!"
+Good example for "together": "Let's try this one, tuh, geh, ther, together!"
+Bad example (NEVER do this): "b-u-t, buh-uh-tuh" — TTS cannot say this properly.
 """
         elif is_long_pause:
             prompt += """
@@ -2466,7 +2471,8 @@ The student has paused for a while. Gently encourage them to keep going. If they
         elif incorrect_words:
             prompt += f"""
 The student misread some words: {str(incorrect_words[:2])}
-Gently correct ONLY the most recent mistake. Help them sound out the correct word.
+Gently correct ONLY the most recent mistake. If helping them sound it out, break the word into real syllables separated by commas.
+IMPORTANT: Do NOT use dashes, slashes, or made-up phonetic spellings like "buh" or "kuh" — the TTS engine cannot say these. Use real syllable chunks instead.
 """
         else:
             prompt += """
@@ -2477,8 +2483,9 @@ The student seems to need a little encouragement. Give brief praise and encourag
 RULES:
 - Respond in 1-2 SHORT sentences only (this will be spoken aloud)
 - Use a warm, encouraging tone like talking to a child
-- Do NOT use bullet points, numbered lists, or quotation marks
-- If helping with a word, break it into sounds/syllables naturally
+- Do NOT use bullet points, numbered lists, quotation marks, dashes between sounds, or phonetic spellings
+- When sounding out a word, use real syllables separated by commas (e.g. "el, eh, phant, elephant!")
+- NEVER use letter-by-letter spelling or made-up sounds like "buh" "cuh" "puh" — TTS cannot read these
 - Never say "great job" if they are struggling — instead be helpful and gentle"""
 
         # Use OpenAI to generate feedback
