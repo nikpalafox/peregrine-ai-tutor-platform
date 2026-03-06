@@ -17,7 +17,7 @@ class ReadingSession {
         this.lastSpokenText = '';
         this.pauseStartTime = null;
         this.lastFeedbackTime = 0;
-        this.feedbackCooldown = 20000; // 20 seconds minimum between feedback requests
+        this.feedbackCooldown = 15000; // 15 seconds minimum between feedback requests
         this.currentTranscript = '';
         this.lastFeedbackCount = 0;
         this.lastUpdateTime = 0;
@@ -796,9 +796,9 @@ class ReadingSession {
      * Check if the student needs help. Called on a timer, not on every speech event.
      *
      * Philosophy: The tutor should stay QUIET while the student reads. Only speak up when:
-     *   1. Student has gone completely silent for 10+ seconds (they may be stuck or lost)
-     *   2. Student hasn't made progress on a new word for 8+ seconds (stuck on a word)
-     *   3. Minimum 20 seconds between any feedback to avoid being annoying
+     *   1. Student has gone completely silent for 7+ seconds (they may be stuck or lost)
+     *   2. Student hasn't made progress on a new word for 6+ seconds (stuck on a word)
+     *   3. Minimum 15 seconds between any feedback to avoid being annoying
      *   4. Never triggers if the student hasn't spoken yet (they may still be getting ready)
      *   5. Never triggers if fewer than 3 words have been read (still warming up)
      */
@@ -817,12 +817,12 @@ class ReadingSession {
 
         let reason = null;
 
-        // Case 1: Complete silence for 10+ seconds (student stopped talking)
-        if (timeSinceSpeech >= 10000) {
+        // Case 1: Complete silence for 7+ seconds (student stopped talking)
+        if (timeSinceSpeech >= 7000) {
             reason = 'long_pause';
         }
-        // Case 2: Student is speaking but no new word matched for 8+ seconds
-        else if (timeSinceProgress >= 8000 && this.lastProgressTime > 0) {
+        // Case 2: Student is speaking but no new word matched for 6+ seconds
+        else if (timeSinceProgress >= 6000 && this.lastProgressTime > 0) {
             reason = 'stuck_word';
         }
 
