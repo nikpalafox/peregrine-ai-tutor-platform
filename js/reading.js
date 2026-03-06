@@ -931,7 +931,6 @@ class ReadingSession {
             const audioBlob = await response.blob();
             const audioUrl = URL.createObjectURL(audioBlob);
             const audio = new Audio(audioUrl);
-            audio.playbackRate = 1.1; // Slightly faster for snappier tutor feel
             this._ttsAudio = audio;
 
             audio.onended = () => {
@@ -975,8 +974,8 @@ class ReadingSession {
 
         this.tts.cancel();
         const utterance = new SpeechSynthesisUtterance(text);
-        utterance.rate = 1.0;
-        utterance.pitch = 1.1;
+        utterance.rate = 0.88;
+        utterance.pitch = 1.12;
         utterance.volume = 1.0;
         if (this.ttsVoice) utterance.voice = this.ttsVoice;
 

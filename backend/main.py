@@ -2475,7 +2475,7 @@ The student seems to need a little encouragement. Give brief praise and encourag
 
         prompt += """
 RULES:
-- Respond in 1 SHORT sentence only (this will be spoken aloud, so be brief!)
+- Respond in 1-2 SHORT sentences only (this will be spoken aloud)
 - Use a warm, encouraging tone like talking to a child
 - Do NOT use bullet points, numbered lists, or quotation marks
 - If helping with a word, break it into sounds/syllables naturally
@@ -2489,10 +2489,10 @@ RULES:
             response = client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[
-                    {"role": "system", "content": "You are a kind reading teacher. Your responses are spoken aloud to children, so be very brief, warm, and clear. One sentence max."},
+                    {"role": "system", "content": "You are a kind reading teacher. Your responses are spoken aloud to children, so be brief, warm, and clear. 1-2 sentences max."},
                     {"role": "user", "content": prompt}
                 ],
-                max_tokens=60,
+                max_tokens=100,
                 temperature=0.7
             )
             
