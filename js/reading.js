@@ -47,6 +47,7 @@ class ReadingSession {
         this._audioChunks = [];
         this._whisperTranscribing = false;
         this._whisperInterval = null;
+        this._whisperFullTranscript = ''; // Running transcript accumulated across chunks
         this._nativeSpeechFailed = false; // Track if native API failed so we can fall back
 
         // Pre-load voices (Chrome loads them asynchronously)
@@ -345,8 +346,9 @@ class ReadingSession {
             // This is common on mobile browsers where native SpeechRecognition
             // exists but fails (e.g. network errors, permission denied after
             // initial grant, service-not-available on some Android devices).
-            if (event.error === 'network' || event.error === 'not-allowed' || event.error === 'service-not-available') {
-                console.warn('Native SpeechRecognition failed — switching to Whisper fallback');
+            const fallbackErrors = ['network', 'not-allowed', 'service-not-available', 'audio-capture'];
+            if (fallbackErrors.includes(event.error)) {
+                console.warn(`Native SpeechRecognition error "${event.error}" — switching to Whisper fallback`);
                 this._nativeSpeechFailed = true;
                 this._useWhisperFallback = true;
                 try { this.recognition.stop(); } catch (e) {}
@@ -584,7 +586,9 @@ class ReadingSession {
 
     async _startWhisperRecognition() {
         // Check for secure context (HTTPS required for getUserMedia on mobile)
-        if (!window.isSecureContext && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+        const isLocalhost = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+        const isSecure = window.isSecureContext || location.protocol === 'https:' || isLocalhost;
+        if (!isSecure) {
             console.error('getUserMedia requires HTTPS on mobile');
             this.updateAgentFeedback('Microphone requires a secure (HTTPS) connection. Please use HTTPS.');
             return;
@@ -605,15 +609,15 @@ class ReadingSession {
 
             // Pick a supported MIME type — Safari prefers mp4, Chrome prefers webm
             let mimeType = '';
-            if (typeof MediaRecorder.isTypeSupported === 'function') {
+            if (typeof MediaRecorder !== 'undefined' && typeof MediaRecorder.isTypeSupported === 'function') {
                 if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
                     mimeType = 'audio/webm;codecs=opus';
                 } else if (MediaRecorder.isTypeSupported('audio/webm')) {
                     mimeType = 'audio/webm';
                 } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
                     mimeType = 'audio/mp4';
-                } else if (MediaRecorder.isTypeSupported('audio/aac')) {
-                    mimeType = 'audio/aac';
+                } else if (MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')) {
+                    mimeType = 'audio/ogg;codecs=opus';
                 }
             }
             console.log('Using MediaRecorder MIME type:', mimeType || '(default)');
@@ -621,6 +625,7 @@ class ReadingSession {
             this._mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
             this._audioChunks = [];
             this._whisperTranscribing = false;
+            this._whisperFullTranscript = ''; // Accumulate transcript across chunks
 
             this._mediaRecorder.ondataavailable = (event) => {
                 if (event.data && event.data.size > 0) {
@@ -630,15 +635,32 @@ class ReadingSession {
 
             this._mediaRecorder.onerror = (event) => {
                 console.error('MediaRecorder error:', event.error);
+                this.updateAgentFeedback('Audio recording error. Please try again.');
             };
 
-            // Record in 3-second slices
-            this._mediaRecorder.start(3000);
-            console.log('MediaRecorder started — sending chunks every 3s');
+            // Don't use timeslice — instead, stop/start the recorder on each
+            // interval so we get clean, non-overlapping audio segments.
+            this._mediaRecorder.start();
+            console.log('MediaRecorder started (continuous mode)');
 
-            // Send audio for transcription every 3 seconds (offset by 500ms so
-            // the chunk from ondataavailable has time to arrive)
-            this._whisperInterval = setInterval(() => this._sendWhisperChunk(), 3500);
+            // Every 3 seconds: stop recording to flush the chunk, send it,
+            // then restart recording for the next segment.
+            this._whisperInterval = setInterval(() => {
+                if (this._mediaRecorder && this._mediaRecorder.state === 'recording') {
+                    this._mediaRecorder.stop(); // triggers ondataavailable with current chunk
+                }
+                // Brief pause then restart recording + send the chunk
+                setTimeout(() => {
+                    this._sendWhisperChunk();
+                    if (this.isListening && this._whisperStream && this._whisperStream.active) {
+                        try {
+                            this._mediaRecorder.start();
+                        } catch (e) {
+                            console.warn('Failed to restart MediaRecorder:', e);
+                        }
+                    }
+                }, 100);
+            }, 3000);
         } catch (err) {
             console.error('Microphone access failed:', err);
             if (err.name === 'NotAllowedError') {
@@ -657,22 +679,30 @@ class ReadingSession {
             this._whisperInterval = null;
         }
         if (this._mediaRecorder && this._mediaRecorder.state !== 'inactive') {
-            this._mediaRecorder.stop();
+            try { this._mediaRecorder.stop(); } catch (e) {}
         }
         if (this._whisperStream) {
             this._whisperStream.getTracks().forEach(t => t.stop());
             this._whisperStream = null;
         }
         this._audioChunks = [];
+        this._whisperFullTranscript = '';
     }
 
     async _sendWhisperChunk() {
         if (!this._audioChunks.length || this._whisperTranscribing || !this.isListening) return;
         this._whisperTranscribing = true;
 
-        // Grab all accumulated chunks and send as one blob
+        // Grab the accumulated chunks and clear the buffer for the next segment
+        const chunks = this._audioChunks.splice(0);
         const mimeType = this._mediaRecorder?.mimeType || 'audio/webm';
-        const blob = new Blob(this._audioChunks, { type: mimeType });
+        const blob = new Blob(chunks, { type: mimeType });
+
+        // Skip tiny chunks (likely silence or recording artifacts)
+        if (blob.size < 1000) {
+            this._whisperTranscribing = false;
+            return;
+        }
 
         // Determine file extension for the upload filename
         const ext = mimeType.includes('mp4') || mimeType.includes('m4a') ? 'recording.m4a'
@@ -695,8 +725,11 @@ class ReadingSession {
             });
             if (resp.ok) {
                 const data = await resp.json();
-                if (data.text) {
-                    this.currentTranscript = data.text;
+                if (data.text && data.text.trim()) {
+                    // Append new transcription to the running transcript
+                    // (like native SpeechRecognition appends to lastSpokenText)
+                    this._whisperFullTranscript += ' ' + data.text.trim();
+                    this.currentTranscript = this._whisperFullTranscript;
                     this.lastSpeechActivityTime = Date.now();
                     this.pauseStartTime = null;
                     this._runWhisperMatching();
