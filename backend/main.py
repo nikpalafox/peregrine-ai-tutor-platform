@@ -2822,32 +2822,50 @@ async def get_student_dashboard(student_id: str):
 
         # Get real dashboard data from the gamification engine
         dashboard = await gamification_engine.get_student_dashboard_data(student_id)
-        
-        # Add next available badges
-        available_badges = await get_available_badges(student_id)
-        dashboard["next_badges"] = available_badges[:5]  # Next 5 badges they can earn
-        
-        # Add student rank
-        rank_info = await get_student_rank(student_id)
-        dashboard["rank"] = rank_info
-        
-        # Add daily quest suggestions if no active quests
-        if dashboard.get("quests", {}).get("active_count", 0) == 0:
-            suggested_quests = await QuestGenerator.generate_personalized_quests(student_id)
-            dashboard["suggested_quests"] = [
-                {
-                    "id": quest.id,
-                    "name": quest.name,
-                    "description": quest.description,
-                    "xp_reward": quest.xp_reward,
-                    "difficulty": quest.difficulty.value
-                } for quest in suggested_quests[:3]
-            ]
-        
+
+        # Add next available badges (non-fatal)
+        try:
+            available_badges = await get_available_badges(student_id)
+            dashboard["next_badges"] = available_badges[:5]
+        except Exception as badge_err:
+            print(f"⚠️ Available badges failed (non-fatal): {badge_err}")
+            dashboard["next_badges"] = []
+
+        # Add student rank (non-fatal)
+        try:
+            from database import SessionLocal
+            rank_db = SessionLocal()
+            try:
+                rank_info = await get_student_rank(student_id, rank_db)
+            finally:
+                rank_db.close()
+            dashboard["rank"] = rank_info
+        except Exception as rank_err:
+            print(f"⚠️ Student rank failed (non-fatal): {rank_err}")
+            dashboard["rank"] = {"name": "Novice Reader", "min_xp": 0}
+
+        # Add daily quest suggestions if no active quests (non-fatal)
+        try:
+            if dashboard.get("quests", {}).get("active_count", 0) == 0:
+                suggested_quests = await QuestGenerator.generate_personalized_quests(student_id)
+                dashboard["suggested_quests"] = [
+                    {
+                        "id": quest.id,
+                        "name": quest.name,
+                        "description": quest.description,
+                        "xp_reward": quest.xp_reward,
+                        "difficulty": quest.difficulty.value
+                    } for quest in suggested_quests[:3]
+                ]
+        except Exception as quest_err:
+            print(f"⚠️ Quest suggestions failed (non-fatal): {quest_err}")
+
         return dashboard
-        
+
     except Exception as e:
         print(f"Dashboard error: {e}")
+        import traceback
+        traceback.print_exc()
         return {"error": str(e), "student_id": student_id}
 
 @app.get("/api/gamification/student/{student_id}/badges")
@@ -2923,8 +2941,16 @@ async def get_student_level_info(student_id: str):
         progress_percentage = (level_info.current_xp / level_info.xp_to_next_level) * 100 if level_info.xp_to_next_level > 0 else 100
         
         # Get rank information
-        rank_info = await get_student_rank(student_id)
-        
+        try:
+            from database import SessionLocal
+            rank_db = SessionLocal()
+            try:
+                rank_info = await get_student_rank(student_id, rank_db)
+            finally:
+                rank_db.close()
+        except Exception:
+            rank_info = {"name": "Novice Reader", "min_xp": 0}
+
         return {
             "current_level": level_info.current_level,
             "title": level_info.title,
